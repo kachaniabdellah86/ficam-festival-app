@@ -1,12 +1,12 @@
 'use client';
 import Link from 'next/link';
-import { Sparkles, QrCode, Play, Star, Ticket } from 'lucide-react';
+import { Sparkles, QrCode, Play, ArrowRight, Star, Ticket } from 'lucide-react';
 
 export default function Home() {
   return (
     <div className="min-h-screen bg-[#0F0F1A] text-white font-sans overflow-hidden relative selection:bg-pink-500 selection:text-white">
       
-      {/* 🟣 FUN BACKGROUND BLOBS */}
+      {/* 🟣 FUN BACKGROUND BLOBS (Decorations) */}
       <div className="absolute top-0 left-0 w-96 h-96 bg-purple-600 rounded-full mix-blend-multiply filter blur-[128px] opacity-40 animate-pulse"></div>
       <div className="absolute bottom-0 right-0 w-96 h-96 bg-pink-600 rounded-full mix-blend-multiply filter blur-[128px] opacity-40 animate-pulse delay-1000"></div>
       
@@ -19,9 +19,9 @@ export default function Home() {
             </div>
             <span className="font-extrabold text-xl tracking-tight">FICAM<span className="text-purple-400">.Fun</span></span>
           </div>
-          <Link href="/scan">
+          <Link href="/login">
             <button className="px-6 py-2 bg-white text-black font-bold rounded-full hover:bg-purple-50 transition-colors shadow-lg shadow-white/10 text-sm">
-              Scanner 🚀
+              Connexion 🚀
             </button>
           </Link>
         </div>
@@ -45,9 +45,9 @@ export default function Home() {
         </p>
         
         <div className="flex flex-col md:flex-row items-center justify-center gap-4">
-          <Link href="/scan">
+          <Link href="/login">
             <button className="px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold rounded-full hover:scale-110 transition-transform shadow-xl shadow-purple-600/30 flex items-center gap-2">
-              <Play size={20} fill="currentColor" /> Ouvrir le Scanner
+              <Play size={20} fill="currentColor" /> C'est parti !
             </button>
           </Link>
           <button className="px-8 py-4 bg-white/5 hover:bg-white/10 border border-white/10 backdrop-blur-md text-white font-bold rounded-full transition-all flex items-center gap-2">
