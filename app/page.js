@@ -6,7 +6,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-[#0F0F1A] text-white font-sans overflow-hidden relative selection:bg-pink-500 selection:text-white">
       
-      {/* 🟣 FUN BACKGROUND BLOBS (Decorations) */}
+      {/* 🟣 FUN BACKGROUND BLOBS */}
       <div className="absolute top-0 left-0 w-96 h-96 bg-purple-600 rounded-full mix-blend-multiply filter blur-[128px] opacity-40 animate-pulse"></div>
       <div className="absolute bottom-0 right-0 w-96 h-96 bg-pink-600 rounded-full mix-blend-multiply filter blur-[128px] opacity-40 animate-pulse delay-1000"></div>
       
@@ -45,7 +45,6 @@ export default function Home() {
         </p>
         
         <div className="flex flex-col md:flex-row items-center justify-center gap-4">
-          {/* 👇 THIS LINK NOW GOES TO YOUR WORKING SCANNER */}
           <Link href="/scan">
             <button className="px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold rounded-full hover:scale-110 transition-transform shadow-xl shadow-purple-600/30 flex items-center gap-2">
               <Play size={20} fill="currentColor" /> Ouvrir le Scanner
