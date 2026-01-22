@@ -86,7 +86,7 @@ export default function Dashboard() {
       <header className="fixed top-0 w-full z-40 bg-black/80 backdrop-blur-xl border-b border-white/10 pt-12 pb-4 px-6 flex justify-between items-center">
         <div>
             <h1 className="text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-                FICAM 2024
+                FICAM
             </h1>
         </div>
         <div className="flex items-center gap-3">

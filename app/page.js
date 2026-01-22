@@ -97,7 +97,7 @@ export default function Home() {
 
       {/* 🦶 FOOTER */}
       <footer className="relative z-10 text-center py-8 text-slate-600 text-xs">
-         <p>© FICAM 2024 • Fait avec ❤️ par l'équipe digitale</p>
+         <p>© FICAM • Fait avec ❤️ par l'équipe digitale</p>
       </footer>
 
     </div>
