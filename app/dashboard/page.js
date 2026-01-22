@@ -2,304 +2,270 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Scanner } from '@yudiel/react-qr-scanner'; 
-import { LayoutGrid, ScanLine, Trophy, UserCircle, LogOut, Flame, Clock, CalendarCheck, Lock, XCircle, CheckCircle2, Shield, MapPin } from 'lucide-react';
+import { Home, ScanLine, Trophy, User, LogOut, Flame, Sparkles, ChevronRight, CheckCircle2, XCircle, MapPin, Palette, Film, Mic, Lock } from 'lucide-react';
 
-// 🗺️ DEFINITION DES QUÊTES (The Source of Truth)
+// 🗺️ DATA
 const QUESTS = {
-  'FICAM-WELCOME': { id: 'q1', xp: 50, badge: 2, label: "Bienvenue au Festival", desc: "Scanner le code à l'entrée principale", icon: MapPin },
-  'FICAM-WORKSHOP': { id: 'q2', xp: 100, badge: 4, label: "Atelier Animation 3D", desc: "Participer au workshop créatif", icon: Palette },
-  'FICAM-MOVIE': { id: 'q3', xp: 30, badge: 3, label: "Projection: Le Roi Lion", desc: "Assister à la séance de 14h", icon: Film },
-  'FICAM-MASTER': { id: 'q4', xp: 200, badge: 6, label: "Rencontre Réalisateur", desc: "Q&A avec l'invité spécial", icon: Mic },
+  'FICAM-WELCOME': { id: 'q1', xp: 50, badge: 2, label: "Bienvenue !", desc: "Scanner l'entrée", icon: MapPin, color: "from-blue-500 to-cyan-500" },
+  'FICAM-WORKSHOP': { id: 'q2', xp: 100, badge: 4, label: "Atelier 3D", desc: "Participer au workshop", icon: Palette, color: "from-purple-500 to-pink-500" },
+  'FICAM-MOVIE': { id: 'q3', xp: 30, badge: 3, label: "Le Roi Lion", desc: "Séance de 14h", icon: Film, color: "from-orange-500 to-red-500" },
+  'FICAM-MASTER': { id: 'q4', xp: 200, badge: 6, label: "Masterclass", desc: "Rencontre VIP", icon: Mic, color: "from-emerald-500 to-green-500" },
 };
 
-// Helper icons for the list above
-import { Palette, Film, Mic } from 'lucide-react';
+const BADGES = [
+    { id: 1, title: "Explorateur", icon: "🚀", req: "auto" },
+    { id: 2, title: "Premier Pas", icon: "📸", req: 2 }, 
+    { id: 3, title: "Cinéphile", icon: "🎬", req: 3 },
+    { id: 4, title: "Artiste", icon: "🎨", req: 4 },
+    { id: 6, title: "Légende", icon: "👑", req: 6 },
+];
 
 export default function Dashboard() {
   const router = useRouter();
   const [user, setUser] = useState(null);
-  const [activeTab, setActiveTab] = useState('overview');
-  
-  // Scanner States
+  const [activeTab, setActiveTab] = useState('home');
   const [isScanning, setIsScanning] = useState(false);
-  const [scanStatus, setScanStatus] = useState('idle');
-  const [lastScan, setLastScan] = useState(null);
+  const [scanResult, setScanResult] = useState(null); // 'success' | 'error' | null
+  const [scanMessage, setScanMessage] = useState('');
 
-  // 1. Load User on Startup
+  // 🔄 Load User
   useEffect(() => {
     const stored = localStorage.getItem('user');
-    if (!stored) {
-      router.push('/login');
-    } else {
-      setUser(JSON.parse(stored));
-    }
+    if (!stored) router.push('/login');
+    else setUser(JSON.parse(stored));
   }, [router]);
 
+  // 🚪 Logout
   const handleLogout = () => {
     localStorage.removeItem('user');
     router.push('/login');
   };
 
-  // 🧠 PROCESS SCAN
-  const processCode = async (code) => {
-    const quest = QUESTS[code]; // Look up in our QUESTS list
+  // 📸 Handle Scan
+  const handleScan = async (result) => {
+    if (!result || !result[0]) return;
+    const code = result[0].rawValue;
+    setIsScanning(false); // Stop camera immediately
 
-    if (quest) {
-        // 1. Check if already done (prevent double XP)
-        if (user.badges?.includes(quest.badge)) {
-             setScanStatus('error');
-             setLastScan("Déjà validé !");
-             setIsScanning(false);
-             return;
-        }
-
-        // 2. Update LOCAL State
-        const updatedUser = { ...user };
-        updatedUser.xp = (updatedUser.xp || 0) + quest.xp;
-        if (!updatedUser.badges) updatedUser.badges = [];
-        updatedUser.badges.push(quest.badge);
-        
-        localStorage.setItem('user', JSON.stringify(updatedUser));
-        setUser(updatedUser);
-        setScanStatus('success');
-        setLastScan(quest.label);
-        setIsScanning(false);
-
-        // 3. 📡 SEND TO SERVER
-        try {
-            await fetch('/api/auth', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'update_progress',
-                    email: user.email,
-                    xpToAdd: quest.xp,
-                    badgeId: quest.badge
-                }),
-            });
-        } catch (err) {
-            console.error("Sync failed", err);
-        }
-
-    } else {
-        setScanStatus('error');
-        setLastScan("Code inconnu");
-        setIsScanning(false);
+    const quest = QUESTS[code];
+    if (!quest) {
+        setScanResult('error');
+        setScanMessage("Ce QR Code n'est pas valide.");
+        return;
     }
+
+    if (user.badges?.includes(quest.badge)) {
+        setScanResult('error');
+        setScanMessage("Tu as déjà validé cette quête !");
+        return;
+    }
+
+    // Success Logic
+    const updatedUser = { ...user, xp: (user.xp || 0) + quest.xp, badges: [...(user.badges || []), quest.badge] };
+    setUser(updatedUser);
+    localStorage.setItem('user', JSON.stringify(updatedUser));
+    setScanResult('success');
+    setScanMessage(`Bravo ! +${quest.xp} XP`);
+
+    // Sync DB (Silent)
+    try {
+        await fetch('/api/auth', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'update_progress', email: user.email, xpToAdd: quest.xp, badgeId: quest.badge }),
+        });
+    } catch (e) { console.error(e); }
   };
 
-  const handleScan = (result) => {
-    if (result && result[0]) {
-        processCode(result[0].rawValue);
-    }
-  };
-
-  // 🧱 MOCK DATA for Badges
-  const allBadges = [
-    { id: 1, title: "Explorateur", desc: "Créer son compte", icon: "🚀", req: "auto" },
-    { id: 2, title: "Premier Pas", desc: "Scanner le QR d'accueil", icon: "📸", req: 2 }, 
-    { id: 3, title: "Cinéphile", desc: "Voir un film", icon: "🎬", req: 3 },
-    { id: 4, title: "Artiste", desc: "Faire un Workshop", icon: "🎨", req: 4 },
-    { id: 6, title: "Légende", desc: "Rencontrer un VIP", icon: "👑", req: 6 },
-  ];
-
-  if (!user) return null;
-
-  // Calculate stats
-  const completedCount = user.badges ? user.badges.length : 0;
-  const totalQuests = Object.keys(QUESTS).length + 1; // +1 for account creation
-  const progressPercent = Math.round((completedCount / totalQuests) * 100);
+  if (!user) return <div className="min-h-screen bg-black" />;
 
   return (
-    <div className="min-h-screen bg-[#0F0F1A] text-white font-sans flex overflow-hidden">
+    <div className="min-h-screen bg-black text-white font-sans selection:bg-purple-500/30 pb-24">
       
-      {/* 🟣 SIDEBAR */}
-      <aside className="w-20 md:w-64 bg-black/20 backdrop-blur-md border-r border-white/5 flex flex-col p-4 z-50">
-        <div className="flex items-center gap-3 px-2 mb-10">
-          <div className="w-10 h-10 bg-gradient-to-tr from-purple-500 to-pink-500 rounded-xl flex items-center justify-center font-bold text-xl shadow-lg">F</div>
-          <span className="font-bold text-xl hidden md:block tracking-tight">FICAM</span>
+      {/* 🌟 HEADER (Sticky Top) */}
+      <header className="fixed top-0 w-full z-40 bg-black/80 backdrop-blur-xl border-b border-white/10 pt-12 pb-4 px-6 flex justify-between items-center">
+        <div>
+            <h1 className="text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+                FICAM 2024
+            </h1>
         </div>
-
-        <nav className="space-y-2 flex-1">
-          <NavItem icon={LayoutGrid} label="Dashboard" active={activeTab === 'overview'} onClick={() => setActiveTab('overview')} />
-          
-          {/* 👇 NEW BUTTON: ACTIVITIES / SUIVI */}
-          <NavItem icon={CalendarCheck} label="Activités" active={activeTab === 'activities'} onClick={() => setActiveTab('activities')} />
-          
-          <NavItem icon={ScanLine} label="Scanner" active={activeTab === 'scanner'} onClick={() => setActiveTab('scanner')} />
-          <NavItem icon={Trophy} label="Succès" active={activeTab === 'trophies'} onClick={() => setActiveTab('trophies')} />
-          
-          {user?.email === 'admin@test.com' && (
-            <div className="mt-8 pt-8 border-t border-white/10 animate-in fade-in">
-                <p className="text-xs text-slate-500 font-mono mb-2 px-2 hidden md:block">ADMINISTRATION</p>
+        <div className="flex items-center gap-3">
+            <div className="text-right hidden sm:block">
+                <p className="font-bold text-sm">{user.name}</p>
+                <p className="text-xs text-slate-400">{user.xp || 0} XP</p>
+            </div>
+            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-purple-600 to-blue-600 p-[2px]">
+                <div className="w-full h-full rounded-full bg-black flex items-center justify-center">
+                    <User size={18} className="text-white" />
+                </div>
+            </div>
+        </div>
+      </header>
+      
+      {/* 🛑 SCANNER OVERLAY (Full Screen) */}
+      {isScanning && (
+        <div className="fixed inset-0 z-[60] bg-black flex flex-col">
+            <div className="flex-1 relative">
+                <Scanner onScan={handleScan} components={{ audio: false, finder: false }} />
+                {/* Custom Overlay */}
+                <div className="absolute inset-0 border-[60px] border-black/60 flex items-center justify-center">
+                    <div className="w-64 h-64 border-2 border-white/50 rounded-3xl relative">
+                        <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-purple-500 -mt-1 -ml-1 rounded-tl-xl"></div>
+                        <div className="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-purple-500 -mt-1 -mr-1 rounded-tr-xl"></div>
+                        <div className="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-purple-500 -mb-1 -ml-1 rounded-bl-xl"></div>
+                        <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-purple-500 -mb-1 -mr-1 rounded-br-xl"></div>
+                    </div>
+                </div>
                 <button 
-                  onClick={() => router.push('/admin')}
-                  className="w-full flex items-center gap-4 px-4 py-3 rounded-xl transition-all font-bold bg-blue-600/20 text-blue-400 border border-blue-500/50 hover:bg-blue-600 hover:text-white"
+                    onClick={() => setIsScanning(false)} 
+                    className="absolute top-12 right-6 bg-white/10 backdrop-blur-md p-3 rounded-full text-white z-50">
+                    <XCircle size={28} />
+                </button>
+            </div>
+            <div className="h-40 bg-black flex flex-col items-center justify-center text-center px-6">
+                <p className="font-bold text-lg mb-1">Scanne un QR Code</p>
+                <p className="text-slate-400 text-sm">Vise le code présent sur le stand</p>
+            </div>
+        </div>
+      )}
+
+      {/* ✅ RESULT MODAL (Popup) */}
+      {scanResult && (
+        <div className="fixed inset-0 z-[70] bg-black/90 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in">
+            <div className="bg-[#1A1A24] border border-white/10 w-full max-w-sm rounded-3xl p-8 flex flex-col items-center text-center shadow-2xl">
+                {scanResult === 'success' ? (
+                    <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mb-6 text-green-400 animate-bounce">
+                        <CheckCircle2 size={40} />
+                    </div>
+                ) : (
+                    <div className="w-20 h-20 bg-red-500/20 rounded-full flex items-center justify-center mb-6 text-red-400">
+                        <XCircle size={40} />
+                    </div>
+                )}
+                <h2 className="text-2xl font-bold mb-2">{scanResult === 'success' ? 'Succès !' : 'Oups'}</h2>
+                <p className="text-slate-400 mb-8">{scanMessage}</p>
+                <button 
+                    onClick={() => setScanResult(null)}
+                    className="w-full py-4 bg-white text-black font-bold rounded-xl active:scale-95 transition-transform"
                 >
-                  <Shield size={20} />
-                  <span className="hidden md:block">Admin Panel</span>
+                    Continuer
                 </button>
             </div>
-          )}
-        </nav>
+        </div>
+      )}
 
-        <button onClick={handleLogout} className="flex items-center gap-3 p-3 rounded-xl text-slate-400 hover:bg-red-500/10 hover:text-red-400 transition-all mt-auto">
-          <LogOut size={20} /> <span className="hidden md:block">Déconnexion</span>
-        </button>
-      </aside>
+      {/* 📱 MAIN CONTENT (Scrollable) */}
+      <main className="pt-28 px-4 max-w-lg mx-auto space-y-8">
 
-      {/* 🟣 CONTENT */}
-      <main className="flex-1 p-6 md:p-10 overflow-y-auto relative">
-        <header className="flex items-center justify-between mb-10">
-          <div>
-            <h1 className="text-3xl font-black mb-1">Salut, {user.name} 👋</h1>
-            <p className="text-slate-400 text-sm">Niveau {Math.floor((user.xp || 0) / 100) + 1}</p>
-          </div>
-          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-purple-600 p-[2px]">
-             <div className="w-full h-full rounded-full bg-[#0F0F1A] flex items-center justify-center">
-               <UserCircle size={24} />
-             </div>
-          </div>
-        </header>
-
-        {activeTab === 'overview' && (
-          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <StatCard label="Points XP" value={user.xp || 0} icon={Flame} color="text-orange-400" bg="bg-orange-500/10" />
-              <StatCard label="Badges" value={user.badges?.length || 0} icon={Trophy} color="text-yellow-400" bg="bg-yellow-500/10" />
-              
-              {/* Click to go to Activities Tab */}
-              <div onClick={() => setActiveTab('activities')} className="cursor-pointer transition-transform hover:scale-105">
-                <StatCard label="Progression" value={`${progressPercent}%`} icon={CalendarCheck} color="text-green-400" bg="bg-green-500/10" />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* 👇 NEW TAB: ACTIVITIES & TRACKING (SUIVI) */}
-        {activeTab === 'activities' && (
-            <div className="max-w-3xl space-y-6 animate-in fade-in">
-                <div className="flex justify-between items-end mb-6">
-                    <div>
-                        <h2 className="text-2xl font-bold">Journal de bord</h2>
-                        <p className="text-slate-400">Suivez votre avancement dans le festival</p>
+        {activeTab === 'home' && (
+            <>
+                {/* 1. Hero Card */}
+                <div className="bg-gradient-to-br from-purple-600 to-indigo-600 rounded-3xl p-6 shadow-2xl shadow-purple-900/30 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-8 opacity-20"><Sparkles size={100} /></div>
+                    <div className="relative z-10">
+                        <p className="text-purple-200 font-medium mb-1">Ton Score Actuel</p>
+                        <h2 className="text-5xl font-black mb-4">{user.xp || 0} <span className="text-2xl opacity-70">XP</span></h2>
+                        <div className="w-full bg-black/20 h-2 rounded-full overflow-hidden">
+                            <div className="h-full bg-white/90 w-[45%]"></div>
+                        </div>
+                        <p className="text-xs text-purple-200 mt-2 text-right">Prochain niveau à 500 XP</p>
                     </div>
                 </div>
 
-                <div className="grid gap-4">
-                    {Object.entries(QUESTS).map(([code, quest]) => {
-                        const isDone = user.badges?.includes(quest.badge);
-                        return (
-                            <div key={code} className={`p-5 rounded-2xl border flex items-center justify-between transition-all ${isDone ? 'bg-green-500/5 border-green-500/20' : 'bg-white/5 border-white/5'}`}>
-                                <div className="flex items-center gap-4">
-                                    <div className={`p-3 rounded-full ${isDone ? 'bg-green-500/20 text-green-400' : 'bg-white/10 text-slate-400'}`}>
-                                        <quest.icon size={24} />
-                                    </div>
-                                    <div>
-                                        <h3 className={`font-bold text-lg ${isDone ? 'text-white' : 'text-slate-300'}`}>{quest.label}</h3>
-                                        <p className="text-sm text-slate-500">{quest.desc}</p>
-                                    </div>
-                                </div>
-                                <div className="text-right">
-                                    {isDone ? (
-                                        <div className="flex items-center gap-2 text-green-400 font-bold bg-green-500/10 px-3 py-1 rounded-full text-sm">
-                                            <CheckCircle2 size={16} /> Fait
-                                        </div>
-                                    ) : (
-                                        <div className="flex flex-col items-end">
-                                            <span className="font-bold text-yellow-400">+{quest.xp} XP</span>
-                                            <span className="text-xs text-slate-500">À faire</span>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        );
-                    })}
+                {/* 2. Quick Actions */}
+                <div className="grid grid-cols-2 gap-4">
+                    <button onClick={() => setIsScanning(true)} className="bg-[#1A1A24] active:bg-[#252532] border border-white/5 p-4 rounded-2xl flex flex-col items-center justify-center gap-3 aspect-square transition-colors">
+                        <div className="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400">
+                            <ScanLine size={24} />
+                        </div>
+                        <span className="font-bold text-sm">Scanner</span>
+                    </button>
+                    <button onClick={() => setActiveTab('trophies')} className="bg-[#1A1A24] active:bg-[#252532] border border-white/5 p-4 rounded-2xl flex flex-col items-center justify-center gap-3 aspect-square transition-colors">
+                        <div className="w-12 h-12 rounded-full bg-yellow-500/20 flex items-center justify-center text-yellow-400">
+                            <Trophy size={24} />
+                        </div>
+                        <span className="font-bold text-sm">Mes Trophées</span>
+                    </button>
                 </div>
-            </div>
-        )}
 
-        {activeTab === 'scanner' && (
-          <div className="h-[60vh] flex flex-col items-center justify-center text-center space-y-6 animate-in zoom-in">
-            {scanStatus === 'success' && (
-                <div className="bg-green-500/10 border border-green-500/20 p-8 rounded-3xl flex flex-col items-center gap-4">
-                    <CheckCircle2 size={48} className="text-green-400 animate-bounce" />
-                    <div>
-                        <h2 className="text-2xl font-bold text-white">Bravo !</h2>
-                        <p className="text-green-300">Activité validée : {lastScan}</p>
+                {/* 3. Quest List */}
+                <div>
+                    <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+                        <Flame size={18} className="text-orange-500" /> Quêtes disponibles
+                    </h3>
+                    <div className="space-y-3">
+                        {Object.entries(QUESTS).map(([key, quest]) => {
+                            const isDone = user.badges?.includes(quest.badge);
+                            return (
+                                <div key={key} className={`p-4 rounded-2xl border flex items-center gap-4 ${isDone ? 'bg-green-900/10 border-green-500/30 opacity-60' : 'bg-[#1A1A24] border-white/5'}`}>
+                                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white shadow-lg bg-gradient-to-br ${quest.color}`}>
+                                        <quest.icon size={20} />
+                                    </div>
+                                    <div className="flex-1">
+                                        <h4 className="font-bold text-sm">{quest.label}</h4>
+                                        <p className="text-xs text-slate-400">{quest.desc}</p>
+                                    </div>
+                                    <div className="text-right">
+                                        {isDone ? (
+                                            <CheckCircle2 size={20} className="text-green-500" />
+                                        ) : (
+                                            <span className="font-bold text-sm text-purple-400">+{quest.xp}</span>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
-                    <button onClick={() => setScanStatus('idle')} className="px-6 py-2 bg-white text-black font-bold rounded-full">Scanner encore</button>
                 </div>
-            )}
-
-            {scanStatus === 'error' && (
-                <div className="bg-red-500/10 border border-red-500/20 p-8 rounded-3xl flex flex-col items-center gap-4">
-                    <XCircle size={48} className="text-red-400" />
-                    <h2 className="text-xl font-bold text-white">Oups !</h2>
-                    <p className="text-red-300">{lastScan}</p>
-                    <button onClick={() => setScanStatus('idle')} className="px-6 py-2 bg-white text-black font-bold rounded-full">Réessayer</button>
-                </div>
-            )}
-
-            {scanStatus === 'idle' && !isScanning && (
-                <button onClick={() => setIsScanning(true)} className="px-8 py-4 bg-gradient-to-r from-pink-600 to-purple-600 hover:scale-105 transition-transform text-white rounded-2xl font-bold shadow-xl shadow-pink-600/20 flex items-center gap-2">
-                    <ScanLine size={20} /> Lancer le Scanner
-                </button>
-            )}
-
-            {isScanning && (
-                <div className="relative w-full max-w-md aspect-square bg-black rounded-3xl overflow-hidden border-4 border-purple-500 shadow-2xl">
-                    <Scanner 
-                        onScan={handleScan} 
-                        components={{ audio: false, finder: false }}
-                    />
-                    <button onClick={() => setIsScanning(false)} className="absolute top-4 right-4 bg-red-600 text-white p-2 rounded-full z-50"><XCircle /></button>
-                    {/* Finder Overlay */}
-                    <div className="absolute inset-0 border-[40px] border-black/50 pointer-events-none z-10"></div>
-                </div>
-            )}
-          </div>
+            </>
         )}
 
         {activeTab === 'trophies' && (
-           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-in fade-in">
-               {allBadges.map((badge) => {
-                 const isUnlocked = user.badges?.includes(badge.req) || badge.req === "auto";
-                 return (
-                   <div key={badge.id} className={`p-6 rounded-2xl border transition-all ${isUnlocked ? 'bg-white/10 border-white/10' : 'bg-black/20 border-white/5 opacity-50 grayscale'}`}>
-                     <div className="flex justify-between items-start mb-4">
-                        <div className="text-3xl">{badge.icon}</div>
-                        {!isUnlocked && <Lock size={16} />}
-                     </div>
-                     <h3 className="font-bold text-lg">{badge.title}</h3>
-                     <p className="text-sm text-slate-400">{badge.desc}</p>
-                   </div>
-                 )
-               })}
-           </div>
+            <div className="space-y-6">
+                 <h2 className="text-2xl font-bold px-2">Ta Collection</h2>
+                 <div className="grid grid-cols-3 gap-3">
+                    {BADGES.map((badge) => {
+                        const unlocked = user.badges?.includes(badge.req) || badge.req === "auto";
+                        return (
+                            <div key={badge.id} className={`aspect-square rounded-2xl flex flex-col items-center justify-center gap-2 p-2 text-center border ${unlocked ? 'bg-[#1A1A24] border-purple-500/30 shadow-lg shadow-purple-900/10' : 'bg-black border-white/5 opacity-40'}`}>
+                                <div className="text-3xl">{badge.icon}</div>
+                                <p className="text-[10px] font-bold uppercase tracking-wider">{badge.title}</p>
+                                {!unlocked && <Lock size={12} className="text-slate-500" />}
+                            </div>
+                        )
+                    })}
+                 </div>
+                 <button onClick={() => setActiveTab('home')} className="w-full py-4 text-slate-400 font-medium">Retour</button>
+            </div>
         )}
 
       </main>
+
+      {/* 📱 BOTTOM NAVIGATION (Floating iOS Style) */}
+      <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-md bg-white/10 backdrop-blur-xl border border-white/10 rounded-full p-2 flex justify-between items-center shadow-2xl z-50">
+        
+        <NavButton active={activeTab === 'home'} onClick={() => setActiveTab('home')} icon={Home} />
+        
+        {/* CENTER SCAN BUTTON */}
+        <button 
+            onClick={() => setIsScanning(true)}
+            className="w-14 h-14 bg-gradient-to-tr from-purple-500 to-pink-500 rounded-full flex items-center justify-center shadow-lg shadow-purple-500/40 text-white -mt-8 border-4 border-black transition-transform active:scale-95"
+        >
+            <ScanLine size={24} />
+        </button>
+
+        <NavButton active={activeTab === 'trophies'} onClick={() => setActiveTab('trophies')} icon={Trophy} />
+
+      </nav>
     </div>
   );
 }
 
-// 🧱 Components
-function NavItem({ icon: Icon, label, active, onClick }) {
-  return (
-    <button onClick={onClick} className={`w-full flex items-center gap-4 px-4 py-3 rounded-xl transition-all font-medium ${active ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}>
-      <Icon size={20} />
-      <span className="hidden md:block">{label}</span>
-    </button>
-  );
-}
-
-function StatCard({ label, value, icon: Icon, color, bg }) {
-  return (
-    <div className="bg-white/5 border border-white/5 p-6 rounded-3xl backdrop-blur-sm">
-      <div className={`p-3 rounded-2xl w-fit mb-4 ${bg} ${color}`}><Icon size={24} /></div>
-      <div className="text-4xl font-black mb-1">{value}</div>
-      <div className="text-sm text-slate-400 font-medium">{label}</div>
-    </div>
-  );
+// ✨ Helper Component
+function NavButton({ active, onClick, icon: Icon }) {
+    return (
+        <button onClick={onClick} className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${active ? 'text-white bg-white/10' : 'text-slate-400'}`}>
+            <Icon size={20} />
+        </button>
+    )
 }
