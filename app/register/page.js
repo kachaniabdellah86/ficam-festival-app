@@ -18,14 +18,17 @@ export default function Register() {
     try {
       const res = await fetch('/api/auth', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'register', ...form })
       });
       const json = await res.json();
       
       if (json.success) {
+        // Save the user info so the dashboard knows who we are
         if (json.user) {
           localStorage.setItem('user', JSON.stringify(json.user));
         }
+        // Redirect immediately
         router.push('/dashboard');
       } else {
         setError(json.message || "Erreur d'inscription");

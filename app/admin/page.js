@@ -1,8 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-// 👇 Added LayoutGrid to the imports
-import { Shield, Users, Trophy, Activity, Search, LogOut, CheckCircle, XCircle, LayoutGrid } from 'lucide-react';
+import { Shield, Users, Trophy, Activity, Search, LogOut, CheckCircle, LayoutGrid } from 'lucide-react';
 
 export default function AdminDashboard() {
   const router = useRouter();
@@ -19,9 +18,12 @@ export default function AdminDashboard() {
     }
     
     const user = JSON.parse(stored);
-    if (user.email !== 'admin@test.com') {
+    
+    // 🔓 Allow access if role is admin OR if it's the specific test email
+    // (We check 'role' now because Supabase has roles!)
+    if (user.role !== 'admin' && user.email !== 'admin@test.com') {
       alert("Accès refusé: Vous n'êtes pas administrateur.");
-      router.push('/dashboard'); // Kick them back to normal dashboard
+      router.push('/dashboard'); 
       return;
     }
     
@@ -45,7 +47,7 @@ export default function AdminDashboard() {
         setStats({
             totalUsers: data.users.length,
             totalXP: totalXP,
-            activeNow: Math.floor(Math.random() * 5) + 1 // Fake "Live" data
+            activeNow: 1 // Showing 1 active (you!)
         });
       }
     } catch (error) {
@@ -57,6 +59,10 @@ export default function AdminDashboard() {
     localStorage.removeItem('user');
     router.push('/');
   };
+
+  // 🛠️ Helpers to handle missing data from Supabase
+  const getName = (email) => email ? email.split('@')[0] : 'Inconnu'; // "alex@test.com" -> "alex"
+  const getLevel = (xp) => Math.floor((xp || 0) / 100) + 1; // Calculate level from XP
 
   if (!admin) return null;
 
@@ -71,7 +77,7 @@ export default function AdminDashboard() {
           </div>
           <div>
             <div className="font-bold text-lg tracking-tight">Admin OS</div>
-            <div className="text-[10px] text-blue-500/80 font-mono tracking-widest">v2.0 SYSTEM</div>
+            <div className="text-[10px] text-blue-500/80 font-mono tracking-widest">v2.0 LIVE</div>
           </div>
         </div>
 
@@ -83,7 +89,6 @@ export default function AdminDashboard() {
             <Activity size={18} /> Logs Système
           </div>
 
-          {/* 👇 NEW BUTTON: GO BACK TO GAME */}
           <div 
             onClick={() => router.push('/dashboard')} 
             className="mt-6 border-t border-white/10 pt-4 text-slate-400 p-3 rounded-lg flex items-center gap-3 font-medium hover:bg-purple-500/10 hover:text-purple-400 cursor-pointer transition-colors"
@@ -104,7 +109,7 @@ export default function AdminDashboard() {
         <header className="flex justify-between items-center mb-10">
           <div>
             <h1 className="text-3xl font-bold mb-1">Vue d'ensemble</h1>
-            <p className="text-slate-400">Bienvenue, Administrateur.</p>
+            <p className="text-slate-400">Base de données Supabase connectée.</p>
           </div>
           <div className="flex items-center gap-4">
              <div className="bg-[#1a1a24] border border-white/10 px-4 py-2 rounded-full flex items-center gap-2 text-sm text-slate-400">
@@ -116,7 +121,7 @@ export default function AdminDashboard() {
 
         {/* STATS ROW */}
         <div className="grid grid-cols-3 gap-6 mb-10">
-            <StatCard title="Utilisateurs" value={stats.totalUsers} icon={Users} color="text-blue-400" />
+            <StatCard title="Utilisateurs Inscrits" value={stats.totalUsers} icon={Users} color="text-blue-400" />
             <StatCard title="XP Total Distribué" value={stats.totalXP} icon={Trophy} color="text-yellow-400" />
             <StatCard title="Actifs (Live)" value={stats.activeNow} icon={Activity} color="text-green-400" />
         </div>
@@ -125,16 +130,11 @@ export default function AdminDashboard() {
         <div className="bg-[#11111a] border border-white/5 rounded-2xl overflow-hidden">
             <div className="p-6 border-b border-white/5 flex justify-between items-center">
                 <h3 className="font-bold text-lg flex items-center gap-2">
-                    <Users size={18} className="text-blue-500"/> Base de données
+                    <Users size={18} className="text-blue-500"/> Liste des Étudiants
                 </h3>
-                <div className="relative">
-                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                    <input 
-                        type="text" 
-                        placeholder="Rechercher..." 
-                        className="bg-black/30 border border-white/10 rounded-lg py-2 pl-9 pr-4 text-sm focus:outline-none focus:border-blue-500 transition-colors"
-                    />
-                </div>
+                <button onClick={fetchUsers} className="text-sm bg-white/5 hover:bg-white/10 px-3 py-1 rounded transition-colors text-slate-400">
+                    Actualiser
+                </button>
             </div>
             
             <table className="w-full text-left border-collapse">
@@ -142,36 +142,44 @@ export default function AdminDashboard() {
                     <tr className="bg-white/5 text-slate-400 text-sm border-b border-white/5">
                         <th className="p-4 font-medium">Utilisateur</th>
                         <th className="p-4 font-medium">Email</th>
-                        <th className="p-4 font-medium">Niveau</th>
+                        <th className="p-4 font-medium">Rôle</th>
                         <th className="p-4 font-medium">XP</th>
                         <th className="p-4 font-medium">Badges</th>
                         <th className="p-4 font-medium">Status</th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5 text-sm">
-                    {allUsers.map((u, i) => (
-                        <tr key={i} className="hover:bg-white/5 transition-colors group">
-                            <td className="p-4 font-medium text-white flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center font-bold text-xs border border-white/10">
-                                    {u.name.charAt(0)}
-                                </div>
-                                {u.name}
-                            </td>
-                            <td className="p-4 text-slate-400 font-mono">{u.email}</td>
-                            <td className="p-4 text-blue-300">Lvl {u.level || 1}</td>
-                            <td className="p-4 font-bold">{u.xp || 0}</td>
-                            <td className="p-4">
-                                <span className="bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 px-2 py-1 rounded text-xs">
-                                    {u.badges?.length || 0} 🏆
-                                </span>
-                            </td>
-                            <td className="p-4">
-                                <div className="flex items-center gap-2 text-green-400 text-xs bg-green-500/10 w-fit px-2 py-1 rounded border border-green-500/20">
-                                    <CheckCircle size={12} /> Actif
-                                </div>
-                            </td>
-                        </tr>
-                    ))}
+                    {allUsers.length === 0 ? (
+                        <tr><td colSpan="6" className="p-8 text-center text-slate-500">Aucun utilisateur trouvé.</td></tr>
+                    ) : (
+                        allUsers.map((u, i) => (
+                            <tr key={i} className="hover:bg-white/5 transition-colors group">
+                                <td className="p-4 font-medium text-white flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center font-bold text-xs border border-white/10 uppercase">
+                                        {u.email ? u.email.charAt(0) : '?'}
+                                    </div>
+                                    <span className="capitalize">{getName(u.email)}</span>
+                                </td>
+                                <td className="p-4 text-slate-400 font-mono">{u.email}</td>
+                                <td className="p-4">
+                                    <span className={`px-2 py-1 rounded text-xs font-bold ${u.role === 'admin' ? 'bg-purple-500/20 text-purple-300' : 'bg-blue-500/20 text-blue-300'}`}>
+                                      {u.role || 'student'}
+                                    </span>
+                                </td>
+                                <td className="p-4 font-bold text-yellow-400">{u.xp || 0} XP</td>
+                                <td className="p-4">
+                                    <span className="bg-white/5 text-slate-400 border border-white/10 px-2 py-1 rounded text-xs">
+                                        {u.badges ? (typeof u.badges === 'string' ? JSON.parse(u.badges).length : u.badges.length) : 0} 🏆
+                                    </span>
+                                </td>
+                                <td className="p-4">
+                                    <div className="flex items-center gap-2 text-green-400 text-xs bg-green-500/10 w-fit px-2 py-1 rounded border border-green-500/20">
+                                        <CheckCircle size={12} /> Actif
+                                    </div>
+                                </td>
+                            </tr>
+                        ))
+                    )}
                 </tbody>
             </table>
         </div>
