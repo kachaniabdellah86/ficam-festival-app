@@ -75,3 +75,19 @@ export default function Home() {
     </div>
   );
 }
+import Link from 'next/link';
+
+export default function Home() {
+  return (
+    <div style={{ padding: "50px", textAlign: "center" }}>
+      <h1>FICAM Festival App</h1>
+      <p>Welcome to the scanner portal.</p>
+      <br />
+      <Link href="/dashboard">
+        <button style={{ padding: "10px 20px", fontSize: "18px", cursor: "pointer" }}>
+          Go to Scanner Dashboard
+        </button>
+      </Link>
+    </div>
+  );
+}
