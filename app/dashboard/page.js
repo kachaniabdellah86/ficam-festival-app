@@ -2,31 +2,27 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Scanner } from '@yudiel/react-qr-scanner'; 
-import { Home, ScanLine, Trophy, User, LogOut, Flame, Sparkles, ChevronRight, CheckCircle2, XCircle, MapPin, Palette, Film, Mic, Lock } from 'lucide-react';
+import { Home, ScanLine, User, LogOut, CheckCircle2, XCircle, MapPin, Palette, Film, Mic, ChevronRight, ListTodo, Info, Lock } from 'lucide-react';
 
-// 🗺️ DATA
-const QUESTS = {
-  'FICAM-WELCOME': { id: 'q1', xp: 50, badge: 2, label: "Bienvenue !", desc: "Scanner l'entrée", icon: MapPin, color: "from-blue-500 to-cyan-500" },
-  'FICAM-WORKSHOP': { id: 'q2', xp: 100, badge: 4, label: "Atelier 3D", desc: "Participer au workshop", icon: Palette, color: "from-purple-500 to-pink-500" },
-  'FICAM-MOVIE': { id: 'q3', xp: 30, badge: 3, label: "Le Roi Lion", desc: "Séance de 14h", icon: Film, color: "from-orange-500 to-red-500" },
-  'FICAM-MASTER': { id: 'q4', xp: 200, badge: 6, label: "Masterclass", desc: "Rencontre VIP", icon: Mic, color: "from-emerald-500 to-green-500" },
+// 🗺️ DATA: We now treat these as "Steps" not "Quests"
+const STEPS = {
+  'FICAM-WELCOME': { id: 'step1', label: "Bienvenue !", desc: "Scanner l'entrée principale", icon: MapPin, color: "bg-blue-600" },
+  'FICAM-WORKSHOP': { id: 'step2', label: "Atelier 3D", desc: "Participer au workshop", icon: Palette, color: "bg-purple-600" },
+  'FICAM-MOVIE': { id: 'step3', label: "Le Roi Lion", desc: "Séance de 14h", icon: Film, color: "bg-orange-600" },
+  'FICAM-MASTER': { id: 'step4', label: "Masterclass", desc: "Rencontre VIP", icon: Mic, color: "bg-green-600" },
 };
-
-const BADGES = [
-    { id: 1, title: "Explorateur", icon: "🚀", req: "auto" },
-    { id: 2, title: "Premier Pas", icon: "📸", req: 2 }, 
-    { id: 3, title: "Cinéphile", icon: "🎬", req: 3 },
-    { id: 4, title: "Artiste", icon: "🎨", req: 4 },
-    { id: 6, title: "Légende", icon: "👑", req: 6 },
-];
 
 export default function Dashboard() {
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [activeTab, setActiveTab] = useState('home');
+  
+  // Scanner States
   const [isScanning, setIsScanning] = useState(false);
-  const [scanResult, setScanResult] = useState(null); // 'success' | 'error' | null
-  const [scanMessage, setScanMessage] = useState('');
+  const [scanResult, setScanResult] = useState(null);
+  
+  // NEW: State for the "Clickable Button" Popup
+  const [selectedStep, setSelectedStep] = useState(null);
 
   // 🔄 Load User
   useEffect(() => {
@@ -45,96 +41,100 @@ export default function Dashboard() {
   const handleScan = async (result) => {
     if (!result || !result[0]) return;
     const code = result[0].rawValue;
-    setIsScanning(false); // Stop camera immediately
+    setIsScanning(false); // Stop camera
 
-    const quest = QUESTS[code];
-    if (!quest) {
-        setScanResult('error');
-        setScanMessage("Ce QR Code n'est pas valide.");
+    const step = STEPS[code];
+    
+    // 1. Invalid Code
+    if (!step) {
+        setScanResult({ success: false, msg: "Ce QR Code n'est pas valide." });
         return;
     }
 
-    if (user.badges?.includes(quest.badge)) {
-        setScanResult('error');
-        setScanMessage("Tu as déjà validé cette quête !");
+    // 2. Already Done
+    if (user.badges?.includes(step.id)) {
+        setScanResult({ success: false, msg: "Vous avez déjà validé cette étape !" });
         return;
     }
 
-    // Success Logic
-    const updatedUser = { ...user, xp: (user.xp || 0) + quest.xp, badges: [...(user.badges || []), quest.badge] };
+    // 3. Success
+    const updatedUser = { ...user, badges: [...(user.badges || []), step.id] };
     setUser(updatedUser);
     localStorage.setItem('user', JSON.stringify(updatedUser));
-    setScanResult('success');
-    setScanMessage(`Bravo ! +${quest.xp} XP`);
+    setScanResult({ success: true, msg: `Étape validée : ${step.label}` });
 
     // Sync DB (Silent)
     try {
         await fetch('/api/auth', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'update_progress', email: user.email, xpToAdd: quest.xp, badgeId: quest.badge }),
+            body: JSON.stringify({ action: 'update_progress', email: user.email, badgeId: step.id }),
         });
     } catch (e) { console.error(e); }
   };
 
-  if (!user) return <div className="min-h-screen bg-black" />;
+  if (!user) return <div className="min-h-screen bg-[#0F0F1A]" />;
+
+  // 🧮 Calculate Progress (Steps instead of XP)
+  const completedCount = user.badges?.length || 0;
+  const totalSteps = Object.keys(STEPS).length;
+  const progressPercentage = Math.round((completedCount / totalSteps) * 100);
 
   return (
-    <div className="min-h-screen bg-black text-white font-sans selection:bg-purple-500/30 pb-24">
+    <div className="min-h-screen bg-[#0F0F1A] text-white font-sans pb-24 selection:bg-purple-500/30">
       
-      {/* 🌟 HEADER (Sticky Top) */}
-      <header className="fixed top-0 w-full z-40 bg-black/80 backdrop-blur-xl border-b border-white/10 pt-12 pb-4 px-6 flex justify-between items-center">
+      {/* 🌟 HEADER */}
+      <header className="fixed top-0 w-full z-40 bg-[#0F0F1A]/90 backdrop-blur-xl border-b border-white/5 pt-12 pb-4 px-6 flex justify-between items-center">
         <div>
-            <h1 className="text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-                FICAM
+            <h1 className="text-xl font-black tracking-tighter">
+                FICAM <span className="text-purple-500">2026</span>
             </h1>
         </div>
         <div className="flex items-center gap-3">
             <div className="text-right hidden sm:block">
                 <p className="font-bold text-sm">{user.name}</p>
-                <p className="text-xs text-slate-400">{user.xp || 0} XP</p>
+                <p className="text-xs text-slate-400">{completedCount}/{totalSteps} Étapes</p>
             </div>
-            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-purple-600 to-blue-600 p-[2px]">
-                <div className="w-full h-full rounded-full bg-black flex items-center justify-center">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-purple-600 to-blue-600 p-[1px]">
+                <div className="w-full h-full rounded-full bg-[#0F0F1A] flex items-center justify-center">
                     <User size={18} className="text-white" />
                 </div>
             </div>
         </div>
       </header>
       
-      {/* 🛑 SCANNER OVERLAY (Full Screen) */}
+      {/* 🛑 SCANNER OVERLAY (Fixed for PC & Mobile) */}
       {isScanning && (
-        <div className="fixed inset-0 z-[60] bg-black flex flex-col">
-            <div className="flex-1 relative">
+        <div className="fixed inset-0 z-[60] bg-black/95 flex flex-col items-center justify-center p-4">
+            <div className="w-full max-w-md aspect-square relative rounded-3xl overflow-hidden border-2 border-white/20 shadow-2xl bg-black">
                 <Scanner onScan={handleScan} components={{ audio: false, finder: false }} />
-                {/* Custom Overlay */}
-                <div className="absolute inset-0 border-[60px] border-black/60 flex items-center justify-center">
-                    <div className="w-64 h-64 border-2 border-white/50 rounded-3xl relative">
-                        <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-purple-500 -mt-1 -ml-1 rounded-tl-xl"></div>
-                        <div className="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-purple-500 -mt-1 -mr-1 rounded-tr-xl"></div>
-                        <div className="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-purple-500 -mb-1 -ml-1 rounded-bl-xl"></div>
-                        <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-purple-500 -mb-1 -mr-1 rounded-br-xl"></div>
+                
+                {/* Visual Overlay */}
+                <div className="absolute inset-0 border-[50px] border-black/50 pointer-events-none grid place-items-center">
+                    <div className="w-64 h-64 border-2 border-white/30 rounded-2xl relative">
+                        <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-purple-500 -mt-1 -ml-1 rounded-tl-xl"></div>
+                        <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-purple-500 -mt-1 -mr-1 rounded-tr-xl"></div>
+                        <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-purple-500 -mb-1 -ml-1 rounded-bl-xl"></div>
+                        <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-purple-500 -mb-1 -mr-1 rounded-br-xl"></div>
                     </div>
                 </div>
+
                 <button 
                     onClick={() => setIsScanning(false)} 
-                    className="absolute top-12 right-6 bg-white/10 backdrop-blur-md p-3 rounded-full text-white z-50">
-                    <XCircle size={28} />
+                    className="absolute top-4 right-4 bg-black/60 backdrop-blur-md p-2 rounded-full text-white z-50 hover:bg-white hover:text-black transition-colors">
+                    <XCircle size={24} />
                 </button>
             </div>
-            <div className="h-40 bg-black flex flex-col items-center justify-center text-center px-6">
-                <p className="font-bold text-lg mb-1">Scanne un QR Code</p>
-                <p className="text-slate-400 text-sm">Vise le code présent sur le stand</p>
-            </div>
+            <p className="text-white mt-6 font-medium animate-pulse">Visez le QR Code de l'étape</p>
         </div>
       )}
 
-      {/* ✅ RESULT MODAL (Popup) */}
+      {/* ✅ RESULT POPUP (Success/Error) */}
       {scanResult && (
-        <div className="fixed inset-0 z-[70] bg-black/90 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in">
+        <div className="fixed inset-0 z-[80] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in">
             <div className="bg-[#1A1A24] border border-white/10 w-full max-w-sm rounded-3xl p-8 flex flex-col items-center text-center shadow-2xl">
-                {scanResult === 'success' ? (
-                    <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mb-6 text-green-400 animate-bounce">
+                {scanResult.success ? (
+                    <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mb-6 text-green-400">
                         <CheckCircle2 size={40} />
                     </div>
                 ) : (
@@ -142,8 +142,8 @@ export default function Dashboard() {
                         <XCircle size={40} />
                     </div>
                 )}
-                <h2 className="text-2xl font-bold mb-2">{scanResult === 'success' ? 'Succès !' : 'Oups'}</h2>
-                <p className="text-slate-400 mb-8">{scanMessage}</p>
+                <h2 className="text-2xl font-bold mb-2">{scanResult.success ? 'Validé !' : 'Oups'}</h2>
+                <p className="text-slate-400 mb-8">{scanResult.msg}</p>
                 <button 
                     onClick={() => setScanResult(null)}
                     className="w-full py-4 bg-white text-black font-bold rounded-xl active:scale-95 transition-transform"
@@ -154,65 +154,108 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* 📱 MAIN CONTENT (Scrollable) */}
+      {/* ℹ️ STEP DETAILS POPUP (The "Clickable" Feature) */}
+      {selectedStep && (
+         <div className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-6 animate-in slide-in-from-bottom-10 fade-in">
+            {/* Click outside to close */}
+            <div className="absolute inset-0" onClick={() => setSelectedStep(null)}></div>
+            
+            <div className="bg-[#1A1A24] relative z-10 border-t sm:border border-white/10 w-full max-w-sm rounded-t-3xl sm:rounded-3xl p-8 flex flex-col gap-4 shadow-2xl">
+                <div className={`w-14 h-14 ${selectedStep.color} rounded-2xl flex items-center justify-center shadow-lg mb-2`}>
+                    <selectedStep.icon size={28} className="text-white" />
+                </div>
+                <div>
+                    <h2 className="text-2xl font-bold">{selectedStep.label}</h2>
+                    <p className="text-slate-400">{selectedStep.desc}</p>
+                </div>
+                
+                <div className="p-4 bg-white/5 rounded-xl border border-white/5 mt-2">
+                    <h4 className="text-xs font-bold uppercase text-slate-500 mb-2 flex items-center gap-2">
+                        <Info size={14} /> Instructions
+                    </h4>
+                    <p className="text-sm text-slate-300">
+                        Rendez-vous sur le lieu indiqué. Une fois sur place, scannez le QR Code présenté par le responsable pour valider cette étape.
+                    </p>
+                </div>
+
+                <div className="flex gap-3 mt-4">
+                    <button onClick={() => setSelectedStep(null)} className="flex-1 py-3 bg-white/5 hover:bg-white/10 font-bold rounded-xl transition-colors">Retour</button>
+                    <button 
+                        onClick={() => { setSelectedStep(null); setIsScanning(true); }} 
+                        className="flex-1 py-3 bg-gradient-to-r from-purple-600 to-pink-600 font-bold rounded-xl shadow-lg shadow-purple-500/20 active:scale-95 transition-all"
+                    >
+                        Scanner
+                    </button>
+                </div>
+            </div>
+         </div>
+      )}
+
+      {/* 📱 MAIN CONTENT */}
       <main className="pt-28 px-4 max-w-lg mx-auto space-y-8">
 
         {activeTab === 'home' && (
             <>
-                {/* 1. Hero Card */}
-                <div className="bg-gradient-to-br from-purple-600 to-indigo-600 rounded-3xl p-6 shadow-2xl shadow-purple-900/30 relative overflow-hidden">
-                    <div className="absolute top-0 right-0 p-8 opacity-20"><Sparkles size={100} /></div>
+                {/* 1. Progress Card (Replacing XP) */}
+                <div className="bg-gradient-to-br from-indigo-900 via-purple-900 to-purple-800 rounded-3xl p-6 shadow-2xl shadow-purple-900/20 relative overflow-hidden border border-white/10">
+                    <div className="absolute top-0 right-0 p-8 opacity-10"><Sparkles size={120} /></div>
                     <div className="relative z-10">
-                        <p className="text-purple-200 font-medium mb-1">Ton Score Actuel</p>
-                        <h2 className="text-5xl font-black mb-4">{user.xp || 0} <span className="text-2xl opacity-70">XP</span></h2>
-                        <div className="w-full bg-black/20 h-2 rounded-full overflow-hidden">
-                            <div className="h-full bg-white/90 w-[45%]"></div>
+                        <div className="flex justify-between items-end mb-2">
+                             <div>
+                                <p className="text-purple-200 text-sm font-medium mb-1">Votre Avancement</p>
+                                <h2 className="text-4xl font-black">{progressPercentage}%</h2>
+                             </div>
+                             <div className="text-right">
+                                <p className="text-xl font-bold">{completedCount} <span className="text-base text-purple-300 font-normal">/ {totalSteps}</span></p>
+                             </div>
+                         </div>
+                        
+                        {/* Progress Bar */}
+                        <div className="w-full bg-black/30 h-3 rounded-full overflow-hidden backdrop-blur-md">
+                            <div 
+                                className="h-full bg-white shadow-[0_0_10px_rgba(255,255,255,0.5)] transition-all duration-1000 ease-out" 
+                                style={{ width: `${progressPercentage}%` }}
+                            ></div>
                         </div>
-                        <p className="text-xs text-purple-200 mt-2 text-right">Prochain niveau à 500 XP</p>
+                        
+                        <p className="text-xs text-purple-200 mt-3 flex items-center gap-1 opacity-80">
+                            {progressPercentage === 100 ? "🎉 Parcours terminé ! Félicitations !" : "Continuez pour débloquer votre attestation."}
+                        </p>
                     </div>
                 </div>
 
-                {/* 2. Quick Actions */}
-                <div className="grid grid-cols-2 gap-4">
-                    <button onClick={() => setIsScanning(true)} className="bg-[#1A1A24] active:bg-[#252532] border border-white/5 p-4 rounded-2xl flex flex-col items-center justify-center gap-3 aspect-square transition-colors">
-                        <div className="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400">
-                            <ScanLine size={24} />
-                        </div>
-                        <span className="font-bold text-sm">Scanner</span>
-                    </button>
-                    <button onClick={() => setActiveTab('trophies')} className="bg-[#1A1A24] active:bg-[#252532] border border-white/5 p-4 rounded-2xl flex flex-col items-center justify-center gap-3 aspect-square transition-colors">
-                        <div className="w-12 h-12 rounded-full bg-yellow-500/20 flex items-center justify-center text-yellow-400">
-                            <Trophy size={24} />
-                        </div>
-                        <span className="font-bold text-sm">Mes Trophées</span>
-                    </button>
-                </div>
-
-                {/* 3. Quest List */}
+                {/* 2. Steps List (Now Clickable Buttons) */}
                 <div>
                     <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
-                        <Flame size={18} className="text-orange-500" /> Quêtes disponibles
+                        <ListTodo size={20} className="text-purple-400" /> Étapes du parcours
                     </h3>
                     <div className="space-y-3">
-                        {Object.entries(QUESTS).map(([key, quest]) => {
-                            const isDone = user.badges?.includes(quest.badge);
+                        {Object.values(STEPS).map((step) => {
+                            const isDone = user.badges?.includes(step.id);
                             return (
-                                <div key={key} className={`p-4 rounded-2xl border flex items-center gap-4 ${isDone ? 'bg-green-900/10 border-green-500/30 opacity-60' : 'bg-[#1A1A24] border-white/5'}`}>
-                                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white shadow-lg bg-gradient-to-br ${quest.color}`}>
-                                        <quest.icon size={20} />
+                                <button 
+                                    key={step.id} 
+                                    onClick={() => setSelectedStep(step)} // 👈 MAKES IT CLICKABLE
+                                    className={`w-full text-left p-4 rounded-2xl border flex items-center gap-4 transition-all active:scale-95 group ${isDone ? 'bg-green-500/5 border-green-500/20' : 'bg-[#1A1A24] border-white/5 hover:border-white/20'}`}
+                                >
+                                    {/* Icon Box */}
+                                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white shadow-lg transition-colors ${isDone ? 'bg-green-600' : 'bg-white/5 group-hover:bg-white/10'}`}>
+                                        {isDone ? <CheckCircle2 size={24} /> : <step.icon size={20} />}
                                     </div>
+                                    
+                                    {/* Text */}
                                     <div className="flex-1">
-                                        <h4 className="font-bold text-sm">{quest.label}</h4>
-                                        <p className="text-xs text-slate-400">{quest.desc}</p>
+                                        <h4 className={`font-bold text-sm ${isDone ? 'text-green-400' : 'text-slate-200'}`}>{step.label}</h4>
+                                        <p className="text-xs text-slate-500 line-clamp-1">{step.desc}</p>
                                     </div>
-                                    <div className="text-right">
-                                        {isDone ? (
-                                            <CheckCircle2 size={20} className="text-green-500" />
-                                        ) : (
-                                            <span className="font-bold text-sm text-purple-400">+{quest.xp}</span>
-                                        )}
-                                    </div>
-                                </div>
+                                    
+                                    {/* Arrow or Lock */}
+                                    {isDone ? (
+                                        <div className="text-green-600 opacity-0 group-hover:opacity-100 transition-opacity"><CheckCircle2 size={18} /></div>
+                                    ) : (
+                                        <ChevronRight size={20} className="text-slate-600 group-hover:text-white transition-colors" />
+                                    )}
+                                </button>
                             );
                         })}
                     </div>
@@ -220,41 +263,22 @@ export default function Dashboard() {
             </>
         )}
 
-        {activeTab === 'trophies' && (
-            <div className="space-y-6">
-                 <h2 className="text-2xl font-bold px-2">Ta Collection</h2>
-                 <div className="grid grid-cols-3 gap-3">
-                    {BADGES.map((badge) => {
-                        const unlocked = user.badges?.includes(badge.req) || badge.req === "auto";
-                        return (
-                            <div key={badge.id} className={`aspect-square rounded-2xl flex flex-col items-center justify-center gap-2 p-2 text-center border ${unlocked ? 'bg-[#1A1A24] border-purple-500/30 shadow-lg shadow-purple-900/10' : 'bg-black border-white/5 opacity-40'}`}>
-                                <div className="text-3xl">{badge.icon}</div>
-                                <p className="text-[10px] font-bold uppercase tracking-wider">{badge.title}</p>
-                                {!unlocked && <Lock size={12} className="text-slate-500" />}
-                            </div>
-                        )
-                    })}
-                 </div>
-                 <button onClick={() => setActiveTab('home')} className="w-full py-4 text-slate-400 font-medium">Retour</button>
-            </div>
-        )}
-
       </main>
 
-      {/* 📱 BOTTOM NAVIGATION (Floating iOS Style) */}
-      <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-md bg-white/10 backdrop-blur-xl border border-white/10 rounded-full p-2 flex justify-between items-center shadow-2xl z-50">
+      {/* 📱 BOTTOM NAVIGATION */}
+      <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-md bg-[#1A1A24]/80 backdrop-blur-xl border border-white/10 rounded-full p-2 flex justify-between items-center shadow-2xl z-50">
         
         <NavButton active={activeTab === 'home'} onClick={() => setActiveTab('home')} icon={Home} />
         
         {/* CENTER SCAN BUTTON */}
         <button 
             onClick={() => setIsScanning(true)}
-            className="w-14 h-14 bg-gradient-to-tr from-purple-500 to-pink-500 rounded-full flex items-center justify-center shadow-lg shadow-purple-500/40 text-white -mt-8 border-4 border-black transition-transform active:scale-95"
+            className="w-14 h-14 bg-gradient-to-tr from-purple-500 to-pink-500 rounded-full flex items-center justify-center shadow-lg shadow-purple-500/40 text-white -mt-8 border-4 border-black transition-transform active:scale-95 hover:scale-105"
         >
             <ScanLine size={24} />
         </button>
 
-        <NavButton active={activeTab === 'trophies'} onClick={() => setActiveTab('trophies')} icon={Trophy} />
+        <NavButton onClick={handleLogout} icon={LogOut} />
 
       </nav>
     </div>
@@ -264,7 +288,7 @@ export default function Dashboard() {
 // ✨ Helper Component
 function NavButton({ active, onClick, icon: Icon }) {
     return (
-        <button onClick={onClick} className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${active ? 'text-white bg-white/10' : 'text-slate-400'}`}>
+        <button onClick={onClick} className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${active ? 'text-white bg-white/10' : 'text-slate-400 hover:text-white'}`}>
             <Icon size={20} />
         </button>
     )
