@@ -3,6 +3,13 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { User, Mail, Lock, ArrowLeft, Rocket, Loader2, AlertCircle, Sparkles } from 'lucide-react';
+import { createClient } from '@supabase/supabase-js';
+
+// --- 1. INITIALIZE SUPABASE ---
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
 
 export default function Register() {
   const [form, setForm] = useState({ name: '', email: '', password: '' });
@@ -16,23 +23,48 @@ export default function Register() {
     setLoading(true);
 
     try {
-      const res = await fetch('/api/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'register', ...form })
-      });
-      const json = await res.json();
-      
-      if (json.success) {
-        if (json.user) {
-          localStorage.setItem('user', JSON.stringify(json.user));
+      // --- 2. CREATE ACCOUNT IN SUPABASE AUTH ---
+      const { data, error: authError } = await supabase.auth.signUp({
+        email: form.email,
+        password: form.password,
+        options: {
+          data: { full_name: form.name } // We save the name here
         }
-        router.push('/dashboard');
-      } else {
-        setError(json.message || "Erreur d'inscription");
+      });
+
+      if (authError) throw authError;
+
+      // --- 3. CREATE PROFILE IN DATABASE (For Admin & XP) ---
+      if (data?.user) {
+        const { error: dbError } = await supabase.from('users').insert([
+          { 
+            id: data.user.id, 
+            email: form.email, 
+            role: 'student', // Default role
+            xp: 0 
+          }
+        ]);
+        
+        if (dbError) {
+          console.error("DB Error:", dbError);
+          // We don't stop here, because the account is technically created.
+        }
       }
+
+      // --- 4. SUCCESS & REDIRECT ---
+      // Save local session for immediate UI updates
+      localStorage.setItem('user', JSON.stringify({ 
+         email: form.email, 
+         role: 'student', 
+         id: data.user.id,
+         name: form.name
+      }));
+
+      router.push('/dashboard');
+
     } catch (err) {
-      setError("Erreur de connexion au serveur.");
+      console.error(err);
+      setError(err.message || "Erreur lors de l'inscription.");
     } finally {
       setLoading(false);
     }
