@@ -112,14 +112,7 @@ export default function Dashboard() {
     <div className="min-h-screen bg-[#0F0F1A] text-white font-sans pb-24">
       
       {/* 🔴 DEBUG BAR: REMOVE AFTER FIXING 🔴 */}
-      <div className="fixed top-20 left-4 right-4 z-[999] bg-red-900/90 border-2 border-red-500 text-white p-4 rounded-xl font-mono text-xs shadow-2xl backdrop-blur-md">
-        <h3 className="font-bold flex items-center gap-2 text-red-300"><ShieldAlert size={16}/> DIAGNOSTIC MODE</h3>
-        <div className="mt-2 space-y-1">
-            <p><strong>My Role in DB:</strong> "{currentRole}"</p>
-            <p><strong>Am I Admin?:</strong> {isAdmin ? "YES ✅" : "NO ❌"}</p>
-            <p><strong>Logs:</strong> <span className="text-gray-400">{debugLog}</span></p>
-        </div>
-      </div>
+     
       {/* 🔴 END DEBUG BAR 🔴 */}
 
       <header className="fixed top-0 w-full z-40 bg-[#0F0F1A]/90 backdrop-blur-xl border-b border-white/5 pt-10 pb-4 px-6 flex justify-between items-center">
