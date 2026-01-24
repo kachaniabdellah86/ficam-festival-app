@@ -20,9 +20,18 @@ export default function Login() {
         body: JSON.stringify({ action: 'login', ...form })
       });
       const json = await res.json();
+      
       if (json.success) {
+        // 1. Save User Data
         localStorage.setItem('user', JSON.stringify(json.user));
-        router.push('/dashboard');
+
+        // 2. 🚦 CHECK ROLE & REDIRECT 🚦
+        if (json.user.role === 'admin') {
+            router.push('/admin'); // Admin Panel
+        } else {
+            router.push('/dashboard'); // Student Dashboard
+        }
+
       } else {
         setError(json.message);
       }
@@ -65,7 +74,7 @@ export default function Login() {
             <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-pink-500 transition-colors" size={20} />
             <input 
               type="email" 
-              placeholder="Email étudiant"
+              placeholder="Email"
               value={form.email}
               onChange={(e) => setForm({...form, email: e.target.value})}
               className="w-full bg-black/20 border border-white/10 rounded-xl py-4 pl-12 pr-4 text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-pink-500 transition-all"
@@ -76,7 +85,7 @@ export default function Login() {
             <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-pink-500 transition-colors" size={20} />
             <input 
               type="password" 
-              placeholder="Mot de passe secret"
+              placeholder="Mot de passe"
               value={form.password}
               onChange={(e) => setForm({...form, password: e.target.value})}
               className="w-full bg-black/20 border border-white/10 rounded-xl py-4 pl-12 pr-4 text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-pink-500 transition-all"
