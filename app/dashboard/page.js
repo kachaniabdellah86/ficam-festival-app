@@ -2,42 +2,54 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Scanner } from '@yudiel/react-qr-scanner'; 
-import { createClient } from '@supabase/supabase-js'; // 👈 IMPORT SUPABASE
+import { createClient } from '@supabase/supabase-js'; 
 import { Home, ScanLine, User, LogOut, CheckCircle2, XCircle, ChevronRight, ListTodo, MapPin, Palette, Film, Mic, Star } from 'lucide-react';
 
-// 1. SETUP SUPABASE
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
-// Helper to pick icons dynamically (maps string names to components)
 const iconMap = { MapPin, Palette, Film, Mic, Star };
 
 export default function Dashboard() {
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [activeTab, setActiveTab] = useState('home');
-  
-  // Data States
-  const [steps, setSteps] = useState([]); // 👈 FETCHED FROM DB
+  const [steps, setSteps] = useState([]); 
   const [loading, setLoading] = useState(true);
-
-  // UI States
   const [isScanning, setIsScanning] = useState(false);
   const [scanResult, setScanResult] = useState(null);
   const [selectedStep, setSelectedStep] = useState(null);
   const [showProfile, setShowProfile] = useState(false);
 
-  // 2. LOAD USER & STEPS
   useEffect(() => {
     const init = async () => {
-      // A. Check User
-      const stored = localStorage.getItem('user');
-      if (!stored) { router.push('/login'); return; }
-      setUser(JSON.parse(stored));
+      // 1. Get Stored User (Fast load)
+      const storedString = localStorage.getItem('user');
+      if (!storedString) { router.push('/login'); return; }
+      
+      const storedUser = JSON.parse(storedString);
+      setUser(storedUser); // Show what we have initially
 
-      // B. Fetch Steps from DB
+      // 2. 👇 SYNC PROFILE (The Fix) 👇
+      // This fetches the LATEST role from the DB, ignoring what LocalStorage thinks.
+      try {
+        const { data: freshUser, error } = await supabase
+            .from('users') // Assumes your table is named 'users'
+            .select('*')
+            .eq('email', storedUser.email)
+            .single();
+
+        if (freshUser) {
+            console.log("Profile Refreshed. New Role:", freshUser.role); // Check Console
+            setUser(freshUser); // Update State
+            localStorage.setItem('user', JSON.stringify(freshUser)); // Update Storage for next time
+        }
+      } catch (err) {
+        console.error("Error refreshing profile:", err);
+      }
+
+      // 3. Fetch Steps
       const { data, error } = await supabase.from('steps').select('*').order('created_at', { ascending: true });
       if (data) setSteps(data);
-      if (error) console.error("Error fetching steps:", error);
       
       setLoading(false);
     };
@@ -49,13 +61,11 @@ export default function Dashboard() {
     router.push('/login');
   };
 
-  // 3. DYNAMIC SCAN HANDLER
   const handleScan = async (result) => {
     if (!result || !result[0]) return;
     const code = result[0].rawValue;
     setIsScanning(false); 
 
-    // Find the step in our DB list (not hardcoded anymore!)
     const step = steps.find(s => s.code === code);
     
     if (!step) {
@@ -67,13 +77,11 @@ export default function Dashboard() {
         return;
     }
 
-    // Update Local
     const updatedUser = { ...user, badges: [...(user.badges || []), step.id] };
     setUser(updatedUser);
     localStorage.setItem('user', JSON.stringify(updatedUser));
     setScanResult({ success: true, msg: `Étape "${step.label}" validée !` });
 
-    // Update DB
     try {
         await fetch('/api/auth', {
             method: 'POST',
@@ -85,7 +93,6 @@ export default function Dashboard() {
 
   if (loading || !user) return <div className="min-h-screen bg-[#0F0F1A] flex items-center justify-center text-white">Chargement...</div>;
 
-  // Progress Calculation
   const completedCount = user.badges?.length || 0;
   const totalSteps = steps.length;
   const progressPercentage = totalSteps === 0 ? 0 : Math.round((completedCount / totalSteps) * 100);
@@ -93,13 +100,12 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-[#0F0F1A] text-white font-sans pb-24 selection:bg-purple-500/30">
       
-      {/* HEADER */}
-      {/* HEADER */}
       <header className="fixed top-0 w-full z-40 bg-[#0F0F1A]/90 backdrop-blur-xl border-b border-white/5 pt-10 pb-4 px-6 flex justify-between items-center">
         <h1 className="text-xl font-black tracking-tighter">FICAM <span className="text-purple-500">2026</span></h1>
         
         <div className="flex items-center gap-3">
-            {/* 👑 ADMIN BUTTON (Only visible for Admins) */}
+            
+            {/* 👇 ADMIN BUTTON (Strict Check) */}
             {user.role === 'admin' && (
                 <button 
                     onClick={() => router.push('/admin')}
@@ -132,6 +138,9 @@ export default function Dashboard() {
                     </div>
                     <h2 className="text-2xl font-bold">{user.name}</h2>
                     <p className="text-slate-400 text-sm">{user.email}</p>
+                    
+                    {/* Debug Helper: Show Role */}
+                    <p className="text-xs text-slate-600 mt-2 font-mono uppercase border border-white/5 px-2 py-1 rounded">Role: {user.role}</p>
                 </div>
                 <button onClick={handleLogout} className="w-full py-3 bg-red-500/10 text-red-400 font-bold rounded-xl border border-red-500/20 hover:bg-red-500/20 transition-colors flex items-center justify-center gap-2">
                     <LogOut size={18} /> Se déconnecter
@@ -192,7 +201,6 @@ export default function Dashboard() {
 
       {/* MAIN CONTENT */}
       <main className="pt-28 px-4 max-w-lg mx-auto space-y-8">
-        {/* Progress */}
         <div className="bg-gradient-to-br from-indigo-900 via-purple-900 to-purple-800 rounded-3xl p-6 shadow-2xl relative overflow-hidden border border-white/10">
             <div className="relative z-10">
                 <div className="flex justify-between items-end mb-2">
@@ -208,7 +216,6 @@ export default function Dashboard() {
             </div>
         </div>
 
-        {/* DYNAMIC LIST */}
         <div>
             <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><ListTodo size={20} className="text-purple-400" /> Étapes du parcours</h3>
             
@@ -220,7 +227,6 @@ export default function Dashboard() {
                 <div className="space-y-3">
                     {steps.map((step) => {
                         const isDone = user.badges?.includes(step.id);
-                        // Dynamic Icon Handling
                         const IconComponent = iconMap[step.icon] || MapPin; 
 
                         return (
@@ -245,7 +251,6 @@ export default function Dashboard() {
         </div>
       </main>
 
-      {/* NAVBAR */}
       <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-md bg-[#1A1A24]/80 backdrop-blur-xl border border-white/10 rounded-full p-2 flex justify-between items-center shadow-2xl z-50">
         <button onClick={() => setActiveTab('home')} className={`w-12 h-12 rounded-full flex items-center justify-center text-white bg-white/10`}><Home size={20} /></button>
         <button onClick={() => setIsScanning(true)} className="w-14 h-14 bg-gradient-to-tr from-purple-500 to-pink-500 rounded-full flex items-center justify-center shadow-lg -mt-8 border-4 border-black"><ScanLine size={24} /></button>
