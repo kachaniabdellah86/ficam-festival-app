@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Scanner } from '@yudiel/react-qr-scanner'; 
 import { createClient } from '@supabase/supabase-js'; 
-import { Home, ScanLine, User, LogOut, CheckCircle2, XCircle, ChevronRight, ListTodo, MapPin, Palette, Film, Mic, Star } from 'lucide-react';
+import { Home, ScanLine, User, LogOut, CheckCircle2, XCircle, ChevronRight, ListTodo, MapPin, Palette, Film, Mic, Star, ShieldAlert } from 'lucide-react';
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
@@ -12,43 +12,49 @@ const iconMap = { MapPin, Palette, Film, Mic, Star };
 export default function Dashboard() {
   const router = useRouter();
   const [user, setUser] = useState(null);
-  const [activeTab, setActiveTab] = useState('home');
   const [steps, setSteps] = useState([]); 
   const [loading, setLoading] = useState(true);
   const [isScanning, setIsScanning] = useState(false);
   const [scanResult, setScanResult] = useState(null);
   const [selectedStep, setSelectedStep] = useState(null);
   const [showProfile, setShowProfile] = useState(false);
+  
+  // Debug State
+  const [debugLog, setDebugLog] = useState("Initializing...");
 
   useEffect(() => {
     const init = async () => {
-      // 1. Get Stored User (Fast load)
+      // 1. Load from LocalStorage
       const storedString = localStorage.getItem('user');
       if (!storedString) { router.push('/login'); return; }
       
-      const storedUser = JSON.parse(storedString);
-      setUser(storedUser); // Show what we have initially
+      let currentUser = JSON.parse(storedString);
+      setUser(currentUser);
+      setDebugLog(prev => prev + `\nLocal loaded: ${currentUser.role}`);
 
-      // 2. 👇 SYNC PROFILE (The Fix) 👇
-      // This fetches the LATEST role from the DB, ignoring what LocalStorage thinks.
+      // 2. FORCE SYNC from Database (The Critical Fix)
       try {
-        const { data: freshUser, error } = await supabase
-            .from('users') // Assumes your table is named 'users'
+        const { data: dbUser, error } = await supabase
+            .from('users')
             .select('*')
-            .eq('email', storedUser.email)
+            .eq('email', currentUser.email)
             .single();
 
-        if (freshUser) {
-            console.log("Profile Refreshed. New Role:", freshUser.role); // Check Console
-            setUser(freshUser); // Update State
-            localStorage.setItem('user', JSON.stringify(freshUser)); // Update Storage for next time
+        if (dbUser) {
+            console.log("DB User Found:", dbUser);
+            setDebugLog(prev => prev + `\nDB Fetched: "${dbUser.role}"`);
+            currentUser = dbUser; // Update the reference
+            setUser(dbUser); // Update State
+            localStorage.setItem('user', JSON.stringify(dbUser)); // Update Storage
+        } else {
+            setDebugLog(prev => prev + `\nDB Fetch failed: User not found`);
         }
       } catch (err) {
-        console.error("Error refreshing profile:", err);
+        setDebugLog(prev => prev + `\nSync Error: ${err.message}`);
       }
 
-      // 3. Fetch Steps
-      const { data, error } = await supabase.from('steps').select('*').order('created_at', { ascending: true });
+      // 3. Load Steps
+      const { data } = await supabase.from('steps').select('*').order('created_at', { ascending: true });
       if (data) setSteps(data);
       
       setLoading(false);
@@ -69,7 +75,7 @@ export default function Dashboard() {
     const step = steps.find(s => s.code === code);
     
     if (!step) {
-        setScanResult({ success: false, msg: "QR Code inconnu ou invalide." });
+        setScanResult({ success: false, msg: "QR Code inconnu." });
         return;
     }
     if (user.badges?.includes(step.id)) {
@@ -80,7 +86,7 @@ export default function Dashboard() {
     const updatedUser = { ...user, badges: [...(user.badges || []), step.id] };
     setUser(updatedUser);
     localStorage.setItem('user', JSON.stringify(updatedUser));
-    setScanResult({ success: true, msg: `Étape "${step.label}" validée !` });
+    setScanResult({ success: true, msg: `Validé: ${step.label}` });
 
     try {
         await fetch('/api/auth', {
@@ -88,7 +94,7 @@ export default function Dashboard() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'update_progress', email: user.email, badgeId: step.id }),
         });
-    } catch (e) { console.error("Sync error", e); }
+    } catch (e) { console.error(e); }
   };
 
   if (loading || !user) return <div className="min-h-screen bg-[#0F0F1A] flex items-center justify-center text-white">Chargement...</div>;
@@ -97,84 +103,80 @@ export default function Dashboard() {
   const totalSteps = steps.length;
   const progressPercentage = totalSteps === 0 ? 0 : Math.round((completedCount / totalSteps) * 100);
 
+  // 🛡️ ROBUST ADMIN CHECK 🛡️
+  // We lowercase both sides to ensure 'Admin' == 'admin'
+  const currentRole = user?.role || "undefined";
+  const isAdmin = currentRole.toLowerCase().trim() === 'admin';
+
   return (
-    <div className="min-h-screen bg-[#0F0F1A] text-white font-sans pb-24 selection:bg-purple-500/30">
+    <div className="min-h-screen bg-[#0F0F1A] text-white font-sans pb-24">
       
+      {/* 🔴 DEBUG BAR: REMOVE AFTER FIXING 🔴 */}
+      <div className="fixed top-20 left-4 right-4 z-[999] bg-red-900/90 border-2 border-red-500 text-white p-4 rounded-xl font-mono text-xs shadow-2xl backdrop-blur-md">
+        <h3 className="font-bold flex items-center gap-2 text-red-300"><ShieldAlert size={16}/> DIAGNOSTIC MODE</h3>
+        <div className="mt-2 space-y-1">
+            <p><strong>My Role in DB:</strong> "{currentRole}"</p>
+            <p><strong>Am I Admin?:</strong> {isAdmin ? "YES ✅" : "NO ❌"}</p>
+            <p><strong>Logs:</strong> <span className="text-gray-400">{debugLog}</span></p>
+        </div>
+      </div>
+      {/* 🔴 END DEBUG BAR 🔴 */}
+
       <header className="fixed top-0 w-full z-40 bg-[#0F0F1A]/90 backdrop-blur-xl border-b border-white/5 pt-10 pb-4 px-6 flex justify-between items-center">
         <h1 className="text-xl font-black tracking-tighter">FICAM <span className="text-purple-500">2026</span></h1>
         
         <div className="flex items-center gap-3">
             
-            {/* 👇 ADMIN BUTTON (Strict Check) */}
-            {user.role === 'admin' && (
+            {/* 👇 ADMIN BUTTON 👇 */}
+            {isAdmin && (
                 <button 
                     onClick={() => router.push('/admin')}
-                    className="px-3 py-1.5 bg-red-500/10 text-red-400 border border-red-500/20 rounded-lg text-xs font-bold hover:bg-red-500/20 transition-colors flex items-center gap-2"
+                    className="px-3 py-1.5 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg text-xs font-bold shadow-lg hover:scale-105 transition-transform flex items-center gap-2"
                 >
-                    <Star size={14} fill="currentColor" /> Admin
+                    <Star size={14} fill="currentColor" /> ADMIN
                 </button>
             )}
 
             <div className="text-right hidden sm:block">
                 <p className="font-bold text-sm">{user.name}</p>
-                <p className="text-xs text-slate-400">{completedCount}/{totalSteps} étapes</p>
+                <p className="text-xs text-slate-400">{completedCount}/{totalSteps}</p>
             </div>
             
-            <button onClick={() => setShowProfile(true)} className="w-10 h-10 rounded-full bg-gradient-to-tr from-purple-600 to-blue-600 p-[1px] hover:scale-105 transition-transform active:scale-95">
-                <div className="w-full h-full rounded-full bg-[#0F0F1A] flex items-center justify-center"><User size={18} /></div>
+            <button onClick={() => setShowProfile(true)} className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
+                <User size={18} />
             </button>
         </div>
       </header>
 
       {/* PROFILE MODAL */}
       {showProfile && (
-        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in">
+        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6">
             <div className="absolute inset-0" onClick={() => setShowProfile(false)}></div>
-            <div className="bg-[#1A1A24] border border-white/10 w-full max-w-sm rounded-3xl p-6 relative shadow-2xl z-10">
-                <button onClick={() => setShowProfile(false)} className="absolute top-4 right-4 text-slate-400 hover:text-white bg-white/5 p-1 rounded-full"><XCircle size={24} /></button>
+            <div className="bg-[#1A1A24] border border-white/10 w-full max-w-sm rounded-3xl p-6 relative z-10">
+                <button onClick={() => setShowProfile(false)} className="absolute top-4 right-4 text-slate-400"><XCircle size={24} /></button>
                 <div className="flex flex-col items-center mb-6 pt-4">
-                    <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-purple-600 to-blue-600 p-[2px] mb-4">
-                        <div className="w-full h-full rounded-full bg-[#0F0F1A] flex items-center justify-center"><User size={40} className="text-white" /></div>
-                    </div>
+                    <div className="w-20 h-20 rounded-full bg-purple-600 flex items-center justify-center mb-4"><User size={32} /></div>
                     <h2 className="text-2xl font-bold">{user.name}</h2>
                     <p className="text-slate-400 text-sm">{user.email}</p>
-                    
-                    {/* Debug Helper: Show Role */}
-                    <p className="text-xs text-slate-600 mt-2 font-mono uppercase border border-white/5 px-2 py-1 rounded">Role: {user.role}</p>
+                    <p className="text-xs text-slate-600 mt-2 font-mono">Role: {user.role}</p>
                 </div>
-                <button onClick={handleLogout} className="w-full py-3 bg-red-500/10 text-red-400 font-bold rounded-xl border border-red-500/20 hover:bg-red-500/20 transition-colors flex items-center justify-center gap-2">
-                    <LogOut size={18} /> Se déconnecter
+                <button onClick={handleLogout} className="w-full py-3 bg-red-500/10 text-red-400 font-bold rounded-xl flex items-center justify-center gap-2">
+                    <LogOut size={18} /> Déconnexion
                 </button>
             </div>
         </div>
       )}
       
-      {/* SCANNER MODAL */}
-      {isScanning && (
-        <div className="fixed inset-0 z-[60] bg-black/95 flex flex-col items-center justify-center p-4">
-            <div className="w-full max-w-md aspect-square relative rounded-3xl overflow-hidden border-2 border-white/20 shadow-2xl bg-black">
-                <Scanner onScan={handleScan} components={{ audio: false, finder: false }} />
-                <div className="absolute inset-0 border-[50px] border-black/50 pointer-events-none grid place-items-center">
-                    <div className="w-64 h-64 border-2 border-white/30 rounded-2xl relative"></div>
-                </div>
-                <button onClick={() => setIsScanning(false)} className="absolute top-4 right-4 bg-black/60 p-2 rounded-full text-white z-50"><XCircle size={24} /></button>
-            </div>
-            <p className="text-white mt-6 font-medium animate-pulse">Visez le QR Code</p>
-        </div>
-      )}
-
       {/* RESULT POPUP */}
       {scanResult && (
         <div className="fixed inset-0 z-[80] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in">
-            <div className="bg-[#1A1A24] border border-white/10 w-full max-w-sm rounded-3xl p-8 flex flex-col items-center text-center shadow-2xl">
-                {scanResult.success ? (
-                    <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center text-green-400 mb-4"><CheckCircle2 size={32} /></div>
-                ) : (
-                    <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center text-red-400 mb-4"><XCircle size={32} /></div>
-                )}
-                <h2 className="text-2xl font-bold mb-2">{scanResult.success ? 'Validé !' : 'Oups'}</h2>
+            <div className="bg-[#1A1A24] border border-white/10 w-full max-w-sm rounded-3xl p-8 flex flex-col items-center text-center">
+                <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 ${scanResult.success ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                    {scanResult.success ? <CheckCircle2 size={32} /> : <XCircle size={32} />}
+                </div>
+                <h2 className="text-2xl font-bold mb-2">{scanResult.success ? 'Succès' : 'Erreur'}</h2>
                 <p className="text-slate-400 mb-6">{scanResult.msg}</p>
-                <button onClick={() => setScanResult(null)} className="w-full py-3 bg-white text-black font-bold rounded-xl active:scale-95 transition-transform">Continuer</button>
+                <button onClick={() => setScanResult(null)} className="w-full py-3 bg-white text-black font-bold rounded-xl">Continuer</button>
             </div>
         </div>
       )}
@@ -183,77 +185,66 @@ export default function Dashboard() {
       {selectedStep && (
          <div className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-6 animate-in slide-in-from-bottom-10 fade-in">
             <div className="absolute inset-0" onClick={() => setSelectedStep(null)}></div>
-            <div className="bg-[#1A1A24] relative z-10 w-full max-w-sm rounded-t-3xl sm:rounded-3xl p-8 flex flex-col gap-4 shadow-2xl border-t border-white/10">
-                <div className="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg mb-2">
-                    <MapPin size={28} className="text-white" />
-                </div>
-                <div>
-                    <h2 className="text-2xl font-bold">{selectedStep.label}</h2>
-                    <p className="text-slate-400">{selectedStep.description}</p>
-                </div>
+            <div className="bg-[#1A1A24] relative z-10 w-full max-w-sm rounded-t-3xl sm:rounded-3xl p-8 flex flex-col gap-4 border-t border-white/10">
+                <h2 className="text-2xl font-bold">{selectedStep.label}</h2>
+                <p className="text-slate-400">{selectedStep.description}</p>
                 <div className="flex gap-3 mt-4">
-                    <button onClick={() => setSelectedStep(null)} className="flex-1 py-3 bg-white/5 hover:bg-white/10 font-bold rounded-xl">Fermer</button>
-                    <button onClick={() => { setSelectedStep(null); setIsScanning(true); }} className="flex-1 py-3 bg-gradient-to-r from-purple-600 to-pink-600 font-bold rounded-xl shadow-lg">Scanner</button>
+                    <button onClick={() => setSelectedStep(null)} className="flex-1 py-3 bg-white/10 font-bold rounded-xl">Fermer</button>
+                    <button onClick={() => { setSelectedStep(null); setIsScanning(true); }} className="flex-1 py-3 bg-purple-600 font-bold rounded-xl">Scanner</button>
                 </div>
             </div>
          </div>
       )}
 
+       {/* SCANNER MODAL */}
+       {isScanning && (
+        <div className="fixed inset-0 z-[60] bg-black/95 flex flex-col items-center justify-center p-4">
+            <div className="w-full max-w-md aspect-square relative rounded-3xl overflow-hidden border-2 border-white/20 shadow-2xl bg-black">
+                <Scanner onScan={handleScan} components={{ audio: false, finder: false }} />
+                <button onClick={() => setIsScanning(false)} className="absolute top-4 right-4 bg-black/60 p-2 rounded-full text-white z-50"><XCircle size={24} /></button>
+            </div>
+        </div>
+      )}
+
+
       {/* MAIN CONTENT */}
-      <main className="pt-28 px-4 max-w-lg mx-auto space-y-8">
-        <div className="bg-gradient-to-br from-indigo-900 via-purple-900 to-purple-800 rounded-3xl p-6 shadow-2xl relative overflow-hidden border border-white/10">
+      <main className="pt-32 px-4 max-w-lg mx-auto space-y-8">
+        <div className="bg-purple-900/40 border border-purple-500/20 rounded-3xl p-6 relative overflow-hidden">
             <div className="relative z-10">
-                <div className="flex justify-between items-end mb-2">
-                     <div>
-                        <p className="text-purple-200 text-xs font-bold uppercase tracking-wider mb-1">Progression</p>
-                        <h2 className="text-4xl font-black">{progressPercentage}%</h2>
-                     </div>
-                     <p className="text-xl font-bold">{completedCount} <span className="text-base text-purple-300 font-normal">/ {totalSteps}</span></p>
-                 </div>
-                <div className="w-full bg-black/30 h-3 rounded-full overflow-hidden backdrop-blur-md">
-                    <div className="h-full bg-white transition-all duration-1000" style={{ width: `${progressPercentage}%` }}></div>
+                <h2 className="text-4xl font-black mb-2">{progressPercentage}%</h2>
+                <p className="text-purple-200 text-sm">Progression globale</p>
+                <div className="w-full bg-black/30 h-3 rounded-full mt-4 overflow-hidden">
+                    <div className="h-full bg-white transition-all" style={{ width: `${progressPercentage}%` }}></div>
                 </div>
             </div>
         </div>
 
         <div>
-            <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><ListTodo size={20} className="text-purple-400" /> Étapes du parcours</h3>
-            
-            {steps.length === 0 ? (
-                <div className="text-center p-8 bg-white/5 rounded-2xl text-slate-500">
-                    Aucune étape configurée.<br/>Ajoutez-en via l'Admin !
-                </div>
-            ) : (
-                <div className="space-y-3">
-                    {steps.map((step) => {
-                        const isDone = user.badges?.includes(step.id);
-                        const IconComponent = iconMap[step.icon] || MapPin; 
-
-                        return (
-                            <button 
-                                key={step.id} 
-                                onClick={() => setSelectedStep(step)}
-                                className={`w-full text-left p-4 rounded-2xl border flex items-center gap-4 transition-all active:scale-95 group ${isDone ? 'bg-green-500/5 border-green-500/20' : 'bg-[#1A1A24] border-white/5 hover:border-white/20'}`}
-                            >
-                                <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white shadow-lg transition-colors ${isDone ? 'bg-green-600' : 'bg-white/5 group-hover:bg-white/10'}`}>
-                                    {isDone ? <CheckCircle2 size={24} /> : <IconComponent size={20} />}
-                                </div>
-                                <div className="flex-1">
-                                    <h4 className={`font-bold text-sm ${isDone ? 'text-green-400' : 'text-slate-200'}`}>{step.label}</h4>
-                                    <p className="text-xs text-slate-500 line-clamp-1">{step.description}</p>
-                                </div>
-                                {isDone ? <CheckCircle2 size={18} className="text-green-600" /> : <ChevronRight size={20} className="text-slate-600" />}
-                            </button>
-                        );
-                    })}
-                </div>
-            )}
+            <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><ListTodo size={20} className="text-purple-400" /> Étapes</h3>
+            <div className="space-y-3">
+                {steps.map((step) => {
+                    const isDone = user.badges?.includes(step.id);
+                    const IconComponent = iconMap[step.icon] || MapPin; 
+                    return (
+                        <button key={step.id} onClick={() => setSelectedStep(step)} className={`w-full text-left p-4 rounded-2xl border flex items-center gap-4 ${isDone ? 'bg-green-500/5 border-green-500/20' : 'bg-[#1A1A24] border-white/5'}`}>
+                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${isDone ? 'bg-green-600 text-white' : 'bg-white/5 text-slate-400'}`}>
+                                {isDone ? <CheckCircle2 size={24} /> : <IconComponent size={20} />}
+                            </div>
+                            <div className="flex-1">
+                                <h4 className={`font-bold text-sm ${isDone ? 'text-green-400' : 'text-slate-200'}`}>{step.label}</h4>
+                                <p className="text-xs text-slate-500 line-clamp-1">{step.description}</p>
+                            </div>
+                            {isDone ? <CheckCircle2 size={18} className="text-green-600" /> : <ChevronRight size={20} className="text-slate-600" />}
+                        </button>
+                    );
+                })}
+            </div>
         </div>
       </main>
 
-      <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-md bg-[#1A1A24]/80 backdrop-blur-xl border border-white/10 rounded-full p-2 flex justify-between items-center shadow-2xl z-50">
-        <button onClick={() => setActiveTab('home')} className={`w-12 h-12 rounded-full flex items-center justify-center text-white bg-white/10`}><Home size={20} /></button>
-        <button onClick={() => setIsScanning(true)} className="w-14 h-14 bg-gradient-to-tr from-purple-500 to-pink-500 rounded-full flex items-center justify-center shadow-lg -mt-8 border-4 border-black"><ScanLine size={24} /></button>
+      <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-md bg-[#1A1A24]/90 backdrop-blur-xl border border-white/10 rounded-full p-2 flex justify-between items-center shadow-2xl z-50">
+        <button className="w-12 h-12 rounded-full flex items-center justify-center bg-white/10 text-white"><Home size={20} /></button>
+        <button onClick={() => setIsScanning(true)} className="w-14 h-14 bg-purple-600 rounded-full flex items-center justify-center shadow-lg -mt-8 border-4 border-[#0F0F1A]"><ScanLine size={24} /></button>
         <button onClick={() => setShowProfile(true)} className="w-12 h-12 rounded-full flex items-center justify-center text-slate-400"><User size={20} /></button>
       </nav>
     </div>
