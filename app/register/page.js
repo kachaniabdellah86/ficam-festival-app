@@ -24,47 +24,49 @@ export default function Register() {
 
     try {
       // --- 2. CREATE ACCOUNT IN SUPABASE AUTH ---
+      const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      // 1. Create User in Auth
       const { data, error: authError } = await supabase.auth.signUp({
         email: form.email,
         password: form.password,
         options: {
-          data: { full_name: form.name } // We save the name here
+          data: { full_name: form.name } // Metadata
         }
       });
 
       if (authError) throw authError;
 
-      // --- 3. CREATE PROFILE IN DATABASE (For Admin & XP) ---
-      if (data?.user) {
+      // ⚠️ CRITICAL CHECK: Did we get a session?
+      // If "Confirm Email" is ON, session is null, and we CANNOT write to the DB yet.
+      if (data?.user && data?.session) {
+        
+        // 2. Insert into Public Table
         const { error: dbError } = await supabase.from('users').insert([
           { 
             id: data.user.id, 
             email: form.email, 
-            role: 'student', // Default role
+            full_name: form.name, // 👈 ADDED THIS (It was missing!)
+            role: 'student', 
             xp: 0 
           }
         ]);
         
-        if (dbError) {
-          console.error("DB Error:", dbError);
-          // We don't stop here, because the account is technically created.
-        }
-      }
+        if (dbError) throw dbError;
+      } 
 
-      // --- 4. SUCCESS & REDIRECT ---
-      // Save local session for immediate UI updates
-      localStorage.setItem('user', JSON.stringify({ 
-         email: form.email, 
-         role: 'student', 
-         id: data.user.id,
-         name: form.name
-      }));
-
-      router.push('/dashboard');
+      // 3. Success
+      alert("Compte créé !");
+      router.push('/login');
 
     } catch (err) {
-      console.error(err);
-      setError(err.message || "Erreur lors de l'inscription.");
+      console.error("ERREUR:", err);
+      // Show the ACTUAL error message from the computer
+      setError(err.message || "Erreur inconnue"); 
     } finally {
       setLoading(false);
     }
