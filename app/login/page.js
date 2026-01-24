@@ -14,28 +14,37 @@ export default function Login() {
     e.preventDefault();
     setError('');
     setLoading(true);
+    
     try {
       const res = await fetch('/api/auth', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'login', ...form })
       });
+      
       const json = await res.json();
       
       if (json.success) {
-        // 1. Save User Data
+        // 1. Save User to Browser
         localStorage.setItem('user', JSON.stringify(json.user));
 
-        // 2. 🚦 CHECK ROLE & REDIRECT 🚦
+        // 🔍 DEBUGGING: Check what the server sent
+        console.log("LOGIN SUCCESS! User Role is:", json.user.role);
+
+        // 2. 🚦 THE TRAFFIC COP (Routing Logic)
         if (json.user.role === 'admin') {
-            router.push('/admin'); // Admin Panel
+            console.log("Redirecting to ADMIN panel...");
+            router.push('/admin'); // Admin -> Admin Panel
         } else {
-            router.push('/dashboard'); // Student Dashboard
+            console.log("Redirecting to STUDENT dashboard...");
+            router.push('/dashboard'); // Student -> Game
         }
 
       } else {
         setError(json.message);
       }
-    } catch {
+    } catch (err) {
+      console.error(err);
       setError("Erreur serveur");
     } finally {
       setLoading(false);
@@ -59,8 +68,8 @@ export default function Login() {
           <div className="inline-flex bg-gradient-to-tr from-purple-500 to-pink-500 p-4 rounded-2xl mb-4 shadow-lg shadow-purple-500/20 rotate-3">
             <Zap size={32} className="text-white" fill="currentColor" />
           </div>
-          <h1 className="text-3xl font-black text-white">Re-bonjour !</h1>
-          <p className="text-slate-400">Prêt à continuer l'aventure ?</p>
+          <h1 className="text-3xl font-black text-white">Connexion</h1>
+          <p className="text-slate-400">Espace {form.email.includes('admin') ? 'Administrateur' : 'Étudiant'}</p>
         </div>
 
         {error && (
@@ -93,7 +102,7 @@ export default function Login() {
           </div>
 
           <button disabled={loading} className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-4 rounded-xl hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg shadow-purple-600/20 flex items-center justify-center gap-2">
-            {loading ? <Loader2 className="animate-spin" /> : "Décoller 🚀"}
+            {loading ? <Loader2 className="animate-spin" /> : "Se connecter"}
           </button>
         </form>
 

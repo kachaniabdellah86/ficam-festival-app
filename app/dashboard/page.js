@@ -94,14 +94,26 @@ export default function Dashboard() {
     <div className="min-h-screen bg-[#0F0F1A] text-white font-sans pb-24 selection:bg-purple-500/30">
       
       {/* HEADER */}
+      {/* HEADER */}
       <header className="fixed top-0 w-full z-40 bg-[#0F0F1A]/90 backdrop-blur-xl border-b border-white/5 pt-10 pb-4 px-6 flex justify-between items-center">
         <h1 className="text-xl font-black tracking-tighter">FICAM <span className="text-purple-500">2026</span></h1>
         
         <div className="flex items-center gap-3">
+            {/* 👑 ADMIN BUTTON (Only visible for Admins) */}
+            {user.role === 'admin' && (
+                <button 
+                    onClick={() => router.push('/admin')}
+                    className="px-3 py-1.5 bg-red-500/10 text-red-400 border border-red-500/20 rounded-lg text-xs font-bold hover:bg-red-500/20 transition-colors flex items-center gap-2"
+                >
+                    <Star size={14} fill="currentColor" /> Admin
+                </button>
+            )}
+
             <div className="text-right hidden sm:block">
                 <p className="font-bold text-sm">{user.name}</p>
                 <p className="text-xs text-slate-400">{completedCount}/{totalSteps} étapes</p>
             </div>
+            
             <button onClick={() => setShowProfile(true)} className="w-10 h-10 rounded-full bg-gradient-to-tr from-purple-600 to-blue-600 p-[1px] hover:scale-105 transition-transform active:scale-95">
                 <div className="w-full h-full rounded-full bg-[#0F0F1A] flex items-center justify-center"><User size={18} /></div>
             </button>

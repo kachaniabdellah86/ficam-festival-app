@@ -26,9 +26,9 @@ export default function AdminDashboard() {
     // 2. ⚡ Set up Auto-Refresh (Every 5 seconds)
     const interval = setInterval(() => {
       fetchUsers();
-    }, 5000); // 5000ms = 5 seconds
+    }, 5000); 
 
-    // 3. Cleanup (Stop the timer when you leave the page)
+    // 3. Cleanup
     return () => clearInterval(interval);
   }, [router]);
 
@@ -53,11 +53,9 @@ export default function AdminDashboard() {
   if (!admin) return null;
 
   return (
-    // 📱 Mobile Fix: flex-col (vertical) on mobile, flex-row (horizontal) on desktop (md)
     <div className="min-h-screen bg-[#0a0a12] text-white font-sans flex flex-col md:flex-row">
       
-      {/* 🔵 ADMIN SIDEBAR / HEADER */}
-      {/* 📱 Mobile Fix: Width full on mobile, fixed width on desktop */}
+      {/* 🔵 ADMIN SIDEBAR */}
       <aside className="w-full md:w-64 bg-[#11111a] border-b md:border-b-0 md:border-r border-white/5 flex flex-col p-4 md:p-6">
         
         <div className="flex items-center justify-between md:justify-start gap-3 mb-4 md:mb-10">
@@ -70,16 +68,16 @@ export default function AdminDashboard() {
                 <div className="text-[10px] text-blue-500/80 font-mono tracking-widest">v2.0 LIVE</div>
             </div>
           </div>
-          {/* Mobile only menu icon (visual only for now) */}
           <Menu className="text-slate-500 md:hidden" />
         </div>
 
-        {/* Navigation - Hidden on extremely small screens if needed, or stack */}
+        {/* Navigation */}
         <nav className="flex md:flex-col gap-2 overflow-x-auto md:overflow-visible pb-2 md:pb-0">
           <div className="bg-blue-600/10 text-blue-400 p-3 rounded-lg flex items-center gap-3 font-medium border border-blue-500/20 whitespace-nowrap">
             <Users size={18} /> <span className="hidden md:inline">Utilisateurs</span> <span className="md:hidden">Users</span>
           </div>
           
+          {/* SIDEBAR BUTTON */}
           <div 
             onClick={() => router.push('/dashboard')} 
             className="md:mt-auto border-t md:border-white/10 md:pt-4 text-slate-400 p-3 rounded-lg flex items-center gap-3 font-medium hover:bg-purple-500/10 hover:text-purple-400 cursor-pointer transition-colors whitespace-nowrap"
@@ -98,9 +96,18 @@ export default function AdminDashboard() {
             <h1 className="text-2xl md:text-3xl font-bold mb-1">Vue d'ensemble</h1>
             <p className="text-slate-400 text-sm">Base de données Supabase connectée.</p>
           </div>
+
+          {/* 👇 NEW HEADER BUTTON (Big Purple) 👇 */}
+          <button 
+            onClick={() => router.push('/dashboard')}
+            className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors font-bold shadow-lg shadow-purple-600/20"
+          >
+            <LayoutGrid size={18} /> Retour au Jeu
+          </button>
+
         </header>
 
-        {/* STATS ROW - 📱 Mobile Fix: grid-cols-1 (stack them) */}
+        {/* STATS ROW */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6 mb-8 md:mb-10">
             <StatCard title="Inscrits" value={stats.totalUsers} icon={Users} color="text-blue-400" />
             <StatCard title="XP Total" value={stats.totalXP} icon={Trophy} color="text-yellow-400" />
@@ -118,7 +125,6 @@ export default function AdminDashboard() {
                 </button>
             </div>
             
-            {/* 📱 Mobile Fix: overflow-x-auto makes table scrollable horizontally */}
             <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse min-w-[600px]">
                     <thead>
