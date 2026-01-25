@@ -3,6 +3,13 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Mail, Lock, ArrowLeft, Zap, Loader2, AlertCircle } from 'lucide-react';
+import { createClient } from '@supabase/supabase-js';
+
+// --- 1. INITIALIZE SUPABASE ---
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
 
 export default function Login() {
   const [form, setForm] = useState({ email: '', password: '' });
@@ -16,36 +23,48 @@ export default function Login() {
     setLoading(true);
     
     try {
-      const res = await fetch('/api/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'login', ...form })
+      // --- 2. LOG IN WITH SUPABASE AUTH ---
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email: form.email,
+        password: form.password,
       });
-      
-      const json = await res.json();
-      
-      if (json.success) {
-        // 1. Save User to Browser
-        localStorage.setItem('user', JSON.stringify(json.user));
 
-        // 🔍 DEBUGGING: Check what the server sent
-        console.log("LOGIN SUCCESS! User Role is:", json.user.role);
+      if (authError) throw authError;
 
-        // 2. 🚦 THE TRAFFIC COP (Routing Logic)
-        if (json.user.role === 'admin') {
-            console.log("Redirecting to ADMIN panel...");
-            router.push('/admin'); // Admin -> Admin Panel
-        } else {
-            console.log("Redirecting to STUDENT dashboard...");
-            router.push('/dashboard'); // Student -> Game
+      // --- 3. CHECK USER ROLE IN DATABASE ---
+      if (data?.user) {
+        // Fetch the user's profile to get the role
+        const { data: profile, error: dbError } = await supabase
+          .from('users')
+          .select('role')
+          .eq('id', data.user.id)
+          .single();
+
+        if (dbError) {
+             console.error("DB Error:", dbError);
+             // If profile missing, assume student but log error
         }
 
-      } else {
-        setError(json.message);
+        const role = profile?.role || 'student';
+        
+        // Save simple user info for the UI
+        localStorage.setItem('user', JSON.stringify({ 
+           email: data.user.email, 
+           role: role,
+           id: data.user.id 
+        }));
+
+        // --- 4. REDIRECT ---
+        if (role === 'admin') {
+          router.push('/admin');
+        } else {
+          router.push('/dashboard');
+        }
       }
+
     } catch (err) {
       console.error(err);
-      setError("Erreur serveur");
+      setError("Email ou mot de passe incorrect.");
     } finally {
       setLoading(false);
     }

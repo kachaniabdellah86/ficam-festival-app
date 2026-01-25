@@ -24,49 +24,50 @@ export default function Register() {
 
     try {
       // --- 2. CREATE ACCOUNT IN SUPABASE AUTH ---
-      const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-
-    try {
-      // 1. Create User in Auth
       const { data, error: authError } = await supabase.auth.signUp({
         email: form.email,
         password: form.password,
         options: {
-          data: { full_name: form.name } // Metadata
+          data: { full_name: form.name } // We save the name here
         }
       });
 
       if (authError) throw authError;
 
-      // ⚠️ CRITICAL CHECK: Did we get a session?
-      // If "Confirm Email" is ON, session is null, and we CANNOT write to the DB yet.
-      if (data?.user && data?.session) {
-        
-        // 2. Insert into Public Table
+      // --- 3. CREATE PROFILE IN DATABASE (For Admin & XP) ---
+      // We check if data.user exists before writing
+      if (data?.user) {
         const { error: dbError } = await supabase.from('users').insert([
           { 
             id: data.user.id, 
             email: form.email, 
-            full_name: form.name, // 👈 ADDED THIS (It was missing!)
-            role: 'student', 
-            xp: 0 
+            full_name: form.name, 
+            role: 'student', // Default role
+            xp: 0,
+            badges: [] // Initialize empty badges
           }
         ]);
         
         if (dbError) throw dbError;
-      } 
+      }
 
-      // 3. Success
-      alert("Compte créé !");
-      router.push('/login');
+      // --- 4. SUCCESS & REDIRECT ---
+      // Optional: Save to local storage for immediate UI access
+      if (data?.user) {
+        localStorage.setItem('user', JSON.stringify({ 
+           email: form.email, 
+           role: 'student', 
+           id: data.user.id,
+           name: form.name
+        }));
+      }
+
+      alert("Compte créé avec succès ! 🚀");
+      router.push('/dashboard');
 
     } catch (err) {
-      console.error("ERREUR:", err);
-      // Show the ACTUAL error message from the computer
-      setError(err.message || "Erreur inconnue"); 
+      console.error(err);
+      setError(err.message || "Erreur lors de l'inscription.");
     } finally {
       setLoading(false);
     }
