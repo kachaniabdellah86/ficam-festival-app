@@ -4,12 +4,13 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   Shield, Users, LayoutGrid, QrCode, Trash2, Plus, 
-  Download, Medal, Eye, X, Clock, Search, Loader2, Edit, CheckCircle 
+  Download, Medal, Eye, X, Clock, Search, Loader2, Edit, CheckCircle, Trophy, Activity 
 } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { generateCertificate } from '@/app/utils/generatePdf';
 import { createClient } from '@supabase/supabase-js';
 import * as XLSX from 'xlsx';
+import { Toaster, toast } from 'sonner'; // ✨ NEW: Import Toast
 
 // Initialize Supabase Client
 const supabase = createClient(
@@ -121,13 +122,13 @@ export default function AdminDashboard() {
       if (error) throw error;
       setAllUsers(data || []);
       
-      // Update selected user if modal is open to show live changes
       if (selectedUser) {
         const updatedUser = data.find(u => u.id === selectedUser.id);
         if (updatedUser) setSelectedUser(updatedUser);
       }
     } catch (error) { 
         console.error("Failed to fetch users", error.message); 
+        toast.error("Erreur de chargement des utilisateurs");
     }
   };
 
@@ -155,6 +156,7 @@ export default function AdminDashboard() {
         document.body.appendChild(downloadLink);
         downloadLink.click();
         document.body.removeChild(downloadLink);
+        toast.success("QR Code téléchargé !");
     }
   };
 
@@ -169,18 +171,16 @@ export default function AdminDashboard() {
     });
     setEditId(activity.id);
     setIsEditing(true);
-    // Smooth scroll to top of main content
     document.getElementById('main-content')?.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleSaveActivity = async () => {
-    if (!newActivity.title || !newActivity.qr_code) return alert("Titre et Code QR requis !");
+    if (!newActivity.title || !newActivity.qr_code) return toast.error("Titre et Code QR requis !");
     
     setActivityLoading(true);
     let error;
 
     if (isEditing) {
-        // UPDATE EXISTING
         const { error: updateError } = await supabase
             .from('activities')
             .update({
@@ -194,7 +194,6 @@ export default function AdminDashboard() {
             .eq('id', editId);
         error = updateError;
     } else {
-        // INSERT NEW
         const { error: insertError } = await supabase.from('activities').insert([{
             title: newActivity.title,
             description: newActivity.description,
@@ -210,10 +209,11 @@ export default function AdminDashboard() {
     setActivityLoading(false);
 
     if (error) {
-      alert("Erreur lors de la sauvegarde.");
+      toast.error("Erreur lors de la sauvegarde.");
     } else {
       resetForm();
       fetchActivities(); 
+      toast.success(isEditing ? "Activité modifiée !" : "Nouvelle activité créée !");
     }
   };
 
@@ -228,8 +228,11 @@ export default function AdminDashboard() {
   const handleDeleteActivity = async (id) => {
     if (!window.confirm("Supprimer cette activité ?")) return;
     const { error } = await supabase.from('activities').delete().eq('id', id);
-    if (error) alert("Impossible de supprimer : des utilisateurs ont peut-être déjà scanné ce code.");
-    else fetchActivities();
+    if (error) toast.error("Impossible : des utilisateurs l'ont peut-être déjà scannée.");
+    else {
+        fetchActivities();
+        toast.success("Activité supprimée");
+    }
   };
 
   // --- 5. ACTIONS (MANUAL ASSIGN) ---
@@ -238,27 +241,27 @@ export default function AdminDashboard() {
     
     setManualAssignLoading(true);
 
-    // Check if already exists just in case
     const alreadyExists = selectedUser.user_activities?.some(ua => ua.activities?.id === manualActivityId);
     if(alreadyExists) {
         setManualAssignLoading(false);
-        return;
+        return toast.warning("L'utilisateur a déjà ce badge.");
     }
 
     const { error } = await supabase.from('user_activities').insert([
         {
             user_id: selectedUser.id,
             activity_id: manualActivityId,
-            score: 10 // Default score
+            score: 10
         }
     ]);
 
     if(error) {
-        alert("Erreur lors de l'attribution manuelle.");
+        toast.error("Erreur lors de l'attribution.");
         console.error(error);
     } else {
         await fetchUsers(); 
-        setManualActivityId(''); // Reset selection
+        setManualActivityId('');
+        toast.success("Badge attribué manuellement !");
     }
     setManualAssignLoading(false);
   };
@@ -288,6 +291,7 @@ export default function AdminDashboard() {
     worksheet['!cols'] = wscols;
     XLSX.utils.book_append_sheet(workbook, worksheet, "Participants");
     XLSX.writeFile(workbook, `Export_Participants_${new Date().toLocaleDateString('fr-FR').replace(/\//g, '-')}.xlsx`);
+    toast.success("Export Excel généré !");
   };
 
   // Utilities
@@ -298,7 +302,6 @@ export default function AdminDashboard() {
     getName(u.email).toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Helper to get activities user DOES NOT have yet
   const getUnearnedActivities = (user) => {
     if (!user) return [];
     const earnedIds = user.user_activities?.map(ua => ua.activities?.id) || [];
@@ -328,39 +331,33 @@ export default function AdminDashboard() {
   if (!admin) return null;
 
   return (
-    // FIX: Added w-full max-w-[100vw] and overflow-hidden to prevent blob scrolling
     <div className="min-h-screen w-full max-w-[100vw] bg-[#0a0a12] text-white font-sans flex flex-col md:flex-row relative overflow-hidden">
       
-      {/* FIX: Background Decor - Fixed & Pointer Events None */}
+      {/* ✨ BACKGROUND BLOBS */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
           <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/10 rounded-full blur-[100px] animate-pulse"></div>
           <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-600/10 rounded-full blur-[100px] animate-pulse delay-700"></div>
       </div>
 
-      {/* SIDEBAR */}
-      <aside className="w-full md:w-64 bg-[#11111a] border-b md:border-r border-white/5 flex flex-col p-4 md:p-6 shrink-0 z-10 relative">
+      {/* ✨ SIDEBAR: Added backdrop-blur for glass effect */}
+      <aside className="w-full md:w-64 bg-[#11111a]/90 backdrop-blur-md border-b md:border-r border-white/5 flex flex-col p-4 md:p-6 shrink-0 z-20 relative">
         <div className="flex items-center gap-3 mb-6 md:mb-10">
             <div className="bg-blue-600/20 p-2 rounded-lg"><Shield className="text-blue-500" size={24} /></div>
             <div>
                 <div className="font-bold text-lg">Admin OS</div>
-                <div className="text-[10px] text-blue-500/80 font-mono tracking-widest">v5.1 Enhanced</div>
+                <div className="text-[10px] text-blue-500/80 font-mono tracking-widest">v5.2 Platinum</div>
             </div>
         </div>
 
-        {/* FIX: Changed navigation layout for Mobile to Grid */}
         <nav className="grid grid-cols-2 md:flex md:flex-col gap-2">
-          
-          {/* Tab: Users */}
           <button onClick={() => setActiveTab('users')} className={`col-span-1 p-3 rounded-lg flex items-center justify-center md:justify-start gap-2 md:gap-3 font-medium transition-colors ${activeTab === 'users' ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20' : 'text-slate-400 hover:bg-white/5'}`}>
             <Users size={18} /> <span className="text-sm md:text-base">Utilisateurs</span>
           </button>
           
-          {/* Tab: Activities */}
           <button onClick={() => setActiveTab('steps')} className={`col-span-1 p-3 rounded-lg flex items-center justify-center md:justify-start gap-2 md:gap-3 font-medium transition-colors ${activeTab === 'steps' ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20' : 'text-slate-400 hover:bg-white/5'}`}>
             <QrCode size={18} /> <span className="text-sm md:text-base">Activités</span>
           </button>
           
-          {/* FIX: "Retour au Jeu" now spans full width on mobile (col-span-2) */}
           <div onClick={() => router.push('/dashboard')} className="col-span-2 md:mt-auto border-t border-white/10 pt-3 md:pt-4 text-slate-400 p-3 rounded-lg flex items-center justify-center md:justify-start gap-3 font-medium hover:text-purple-400 cursor-pointer bg-white/5 md:bg-transparent mt-2 md:mt-0">
             <LayoutGrid size={18} /> Retour au Jeu
           </div>
@@ -368,29 +365,69 @@ export default function AdminDashboard() {
       </aside>
 
       {/* MAIN CONTENT */}
-      {/* Added ID for scrolling behavior */}
       <main id="main-content" className="flex-1 p-4 md:p-10 overflow-y-auto h-[calc(100vh-theme(spacing.48))] md:h-screen z-10 relative">
         
-        {/* === USERS TAB === */}
         {activeTab === 'users' && (
             <>
-                <header className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
+                <header className="mb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
                     <div>
-                        <h1 className="text-3xl font-bold mb-1">Utilisateurs</h1>
-                        <p className="text-slate-400 text-sm">Gestion des présences et attribution manuelle.</p>
+                        <h1 className="text-3xl font-bold mb-1">Tableau de Bord</h1>
+                        <p className="text-slate-400 text-sm">Vue d'ensemble des participants et progression.</p>
                     </div>
                     <div className="flex gap-3 w-full md:w-auto">
-                        <button onClick={handleExportExcel} className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-bold text-sm">
+                        <button onClick={handleExportExcel} className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-bold text-sm shadow-lg shadow-green-900/20">
                             <Download size={18} /> Excel
                         </button>
                         <div className="relative flex-1 md:flex-none">
-                            <input type="text" placeholder="Rechercher..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="bg-[#1a1a24] border border-white/10 rounded-lg py-2 pl-10 pr-4 text-sm text-white w-full md:w-64" />
+                            <input type="text" placeholder="Rechercher..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="bg-[#1a1a24]/80 border border-white/10 rounded-lg py-2 pl-10 pr-4 text-sm text-white w-full md:w-64 focus:ring-2 focus:ring-blue-500 focus:outline-none" />
                             <Search size={16} className="absolute left-3 top-3 text-slate-500" />
                         </div>
                     </div>
                 </header>
 
-                <div className="bg-[#11111a] border border-white/5 rounded-2xl overflow-hidden">
+                {/* ✨ NEW: GLOBAL STATS OVERVIEW CARDS */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                  <div className="bg-gradient-to-br from-blue-600/20 to-blue-900/10 border border-blue-500/20 p-4 rounded-xl backdrop-blur-md">
+                    <div className="flex justify-between items-start mb-2">
+                        <div className="text-slate-400 text-[10px] uppercase font-bold">Total Participants</div>
+                        <Users size={16} className="text-blue-400" />
+                    </div>
+                    <div className="text-2xl font-bold text-white">{allUsers.length}</div>
+                  </div>
+                  
+                  <div className="bg-gradient-to-br from-purple-600/20 to-purple-900/10 border border-purple-500/20 p-4 rounded-xl backdrop-blur-md">
+                    <div className="flex justify-between items-start mb-2">
+                        <div className="text-slate-400 text-[10px] uppercase font-bold">Badges Validés</div>
+                        <Medal size={16} className="text-purple-400" />
+                    </div>
+                    <div className="text-2xl font-bold text-white">
+                      {allUsers.reduce((acc, user) => acc + (user.user_activities?.length || 0), 0)}
+                    </div>
+                  </div>
+
+                  <div className="bg-gradient-to-br from-yellow-600/20 to-orange-900/10 border border-yellow-500/20 p-4 rounded-xl backdrop-blur-md">
+                    <div className="flex justify-between items-start mb-2">
+                        <div className="text-slate-400 text-[10px] uppercase font-bold">Activités Totales</div>
+                        <Activity size={16} className="text-yellow-400" />
+                    </div>
+                    <div className="text-2xl font-bold text-white">{activities.length}</div>
+                  </div>
+
+                  <div className="bg-gradient-to-br from-green-600/20 to-emerald-900/10 border border-green-500/20 p-4 rounded-xl backdrop-blur-md">
+                    <div className="flex justify-between items-start mb-2">
+                        <div className="text-slate-400 text-[10px] uppercase font-bold">Taux Complétion</div>
+                        <Trophy size={16} className="text-green-400" />
+                    </div>
+                    <div className="text-2xl font-bold text-white">
+                      {allUsers.length > 0 && activities.length > 0
+                        ? Math.round((allUsers.filter(u => u.user_activities?.length === activities.length).length / allUsers.length) * 100) 
+                        : 0}%
+                    </div>
+                  </div>
+                </div>
+
+                {/* ✨ TABLE: Added Glassmorphism */}
+                <div className="bg-[#11111a]/60 backdrop-blur-xl border border-white/5 rounded-2xl overflow-hidden shadow-2xl">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse min-w-[600px]">
                             <thead className="bg-white/5 text-slate-400 text-sm">
@@ -402,9 +439,9 @@ export default function AdminDashboard() {
                             </thead>
                             <tbody className="divide-y divide-white/5 text-sm">
                                 {filteredUsers.map((u) => (
-                                    <tr key={u.id} className="hover:bg-white/5 transition-colors">
+                                    <tr key={u.id} className="hover:bg-white/5 transition-colors group">
                                         <td className="p-4 flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center font-bold text-xs text-white shrink-0">
+                                            <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center font-bold text-xs text-white shrink-0 shadow-lg group-hover:bg-blue-600 transition-colors">
                                                 {u.email ? u.email.charAt(0).toUpperCase() : '?'}
                                             </div>
                                             <span className="font-medium text-white truncate">{getName(u.email)}</span>
@@ -417,7 +454,20 @@ export default function AdminDashboard() {
                                         </td>
                                     </tr>
                                 ))}
-                                {filteredUsers.length === 0 && <tr><td colSpan={3} className="p-8 text-center text-slate-500">Aucun utilisateur trouvé.</td></tr>}
+                                {/* ✨ NEW: Better Empty State */}
+                                {filteredUsers.length === 0 && (
+                                  <tr>
+                                    <td colSpan={3} className="p-12 text-center">
+                                      <div className="flex flex-col items-center justify-center opacity-40">
+                                        <div className="bg-slate-800 p-4 rounded-full mb-3">
+                                            <Users size={32} className="text-slate-400" />
+                                        </div>
+                                        <p className="text-slate-300 font-medium">Aucun participant trouvé</p>
+                                        <p className="text-xs text-slate-500 mt-1">Essayez une autre recherche ou invitez des joueurs.</p>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
                             </tbody>
                         </table>
                     </div>
@@ -425,7 +475,6 @@ export default function AdminDashboard() {
             </>
         )}
 
-        {/* === ACTIVITIES TAB === */}
         {activeTab === 'steps' && (
             <>
                 <header className="mb-8">
@@ -434,24 +483,24 @@ export default function AdminDashboard() {
                 </header>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    {/* FORM */}
                     <div className="lg:col-span-1">
-                        <div className="bg-[#11111a] p-6 rounded-2xl border border-white/5 sticky top-6">
+                        {/* ✨ FORM: Added Glassmorphism */}
+                        <div className="bg-[#11111a]/80 backdrop-blur-md p-6 rounded-2xl border border-white/5 sticky top-6 shadow-xl">
                             <h3 className="font-bold mb-4 flex items-center gap-2">
                                 {isEditing ? <Edit size={18} className="text-yellow-500"/> : <Plus size={18} className="text-blue-500"/>} 
                                 {isEditing ? 'Modifier Activité' : 'Nouvelle Activité'}
                             </h3>
                             
                             <div className="space-y-4">
-                                <select className="w-full bg-black/20 border border-white/10 rounded-lg p-3 text-sm text-white" value={newActivity.type} onChange={(e) => setNewActivity({...newActivity, type: e.target.value})}>
+                                <select className="w-full bg-black/40 border border-white/10 rounded-lg p-3 text-sm text-white focus:ring-2 focus:ring-blue-500 outline-none" value={newActivity.type} onChange={(e) => setNewActivity({...newActivity, type: e.target.value})}>
                                     <option value="matin">🌞 Matin (Atelier)</option>
                                     <option value="apres_midi">🎬 Après-midi (Film)</option>
                                 </select>
-                                <input type="text" placeholder="Titre (Ex: Atelier 3D)" className="w-full bg-black/20 border border-white/10 rounded-lg p-3 text-sm text-white" value={newActivity.title} onChange={(e) => setNewActivity({...newActivity, title: e.target.value})} />
-                                <input type="text" placeholder="Description (Lieu)" className="w-full bg-black/20 border border-white/10 rounded-lg p-3 text-sm text-white" value={newActivity.description} onChange={(e) => setNewActivity({...newActivity, description: e.target.value})} />
-                                <input type="text" placeholder="Question Quiz" className="w-full bg-black/20 border border-white/10 rounded-lg p-3 text-sm text-white" value={newActivity.question_text} onChange={(e) => setNewActivity({...newActivity, question_text: e.target.value})} />
-                                <input type="text" placeholder="Réponse Attendue" className="w-full bg-black/20 border border-white/10 rounded-lg p-3 text-sm text-white focus:border-green-500/50" value={newActivity.correct_answer} onChange={(e) => setNewActivity({...newActivity, correct_answer: e.target.value})} />
-                                <input type="text" placeholder="Code Secret QR" className="w-full bg-black/20 border border-white/10 rounded-lg p-3 text-sm text-white font-mono" value={newActivity.qr_code} onChange={(e) => setNewActivity({...newActivity, qr_code: e.target.value})} />
+                                <input type="text" placeholder="Titre (Ex: Atelier 3D)" className="w-full bg-black/40 border border-white/10 rounded-lg p-3 text-sm text-white focus:ring-2 focus:ring-blue-500 outline-none" value={newActivity.title} onChange={(e) => setNewActivity({...newActivity, title: e.target.value})} />
+                                <input type="text" placeholder="Description (Lieu)" className="w-full bg-black/40 border border-white/10 rounded-lg p-3 text-sm text-white focus:ring-2 focus:ring-blue-500 outline-none" value={newActivity.description} onChange={(e) => setNewActivity({...newActivity, description: e.target.value})} />
+                                <input type="text" placeholder="Question Quiz" className="w-full bg-black/40 border border-white/10 rounded-lg p-3 text-sm text-white focus:ring-2 focus:ring-blue-500 outline-none" value={newActivity.question_text} onChange={(e) => setNewActivity({...newActivity, question_text: e.target.value})} />
+                                <input type="text" placeholder="Réponse Attendue" className="w-full bg-black/40 border border-white/10 rounded-lg p-3 text-sm text-white focus:border-green-500/50 outline-none" value={newActivity.correct_answer} onChange={(e) => setNewActivity({...newActivity, correct_answer: e.target.value})} />
+                                <input type="text" placeholder="Code Secret QR" className="w-full bg-black/40 border border-white/10 rounded-lg p-3 text-sm text-white font-mono focus:ring-2 focus:ring-purple-500 outline-none" value={newActivity.qr_code} onChange={(e) => setNewActivity({...newActivity, qr_code: e.target.value})} />
                                 
                                 <div className="flex gap-2">
                                     {isEditing && (
@@ -460,7 +509,7 @@ export default function AdminDashboard() {
                                     <button 
                                         onClick={handleSaveActivity} 
                                         disabled={activityLoading}
-                                        className={`flex-1 font-bold py-3 rounded-lg flex justify-center items-center transition-all ${isEditing ? 'bg-yellow-600 hover:bg-yellow-500 text-white' : 'bg-blue-600 hover:bg-blue-500 text-white'}`}
+                                        className={`flex-1 font-bold py-3 rounded-lg flex justify-center items-center transition-all ${isEditing ? 'bg-yellow-600 hover:bg-yellow-500 text-white' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/50'}`}
                                     >
                                         {activityLoading ? <Loader2 className="animate-spin" size={20}/> : (isEditing ? "Enregistrer" : "Créer")}
                                     </button>
@@ -469,10 +518,10 @@ export default function AdminDashboard() {
                         </div>
                     </div>
 
-                    {/* LIST */}
                     <div className="lg:col-span-2 grid gap-4 content-start">
                         {activities.map((act) => (
-                            <div key={act.id} className={`bg-[#11111a] p-4 rounded-2xl border flex items-center gap-6 group transition-all ${editId === act.id ? 'border-yellow-500/50 bg-yellow-500/5' : 'border-white/5 hover:border-white/10'}`}>
+                            // ✨ CARD: Added Glassmorphism
+                            <div key={act.id} className={`bg-[#11111a]/60 backdrop-blur-md p-4 rounded-2xl border flex items-center gap-6 group transition-all ${editId === act.id ? 'border-yellow-500/50 bg-yellow-500/10' : 'border-white/5 hover:border-white/20'}`}>
                                 <div className="bg-white p-2 rounded-lg shrink-0 hidden sm:block">
                                     <QRCodeCanvas id={`qr-canvas-${act.id}`} value={act.qr_code} size={80} level={"H"} includeMargin={true}/>
                                 </div>
@@ -498,12 +547,11 @@ export default function AdminDashboard() {
         )}
       </main>
 
-      {/* USER DETAIL MODAL */}
+      {/* USER DETAIL MODAL - ✨ Glassmorphism */}
       {selectedUser && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setSelectedUser(null)}>
-            <div className="bg-[#1a1a24] w-full max-w-2xl rounded-2xl border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setSelectedUser(null)}>
+            <div className="bg-[#1a1a24]/95 border border-white/10 w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
                 
-                {/* Modal Header */}
                 <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/5">
                     <div>
                         <h2 className="text-2xl font-bold text-white">{getName(selectedUser.email)}</h2>
@@ -514,7 +562,6 @@ export default function AdminDashboard() {
 
                 <div className="p-6 overflow-y-auto custom-scrollbar">
                     
-                    {/* Stats Grid */}
                     <div className="grid grid-cols-2 gap-4 mb-6">
                         <div className="bg-blue-500/10 border border-blue-500/20 p-4 rounded-xl text-center">
                             <div className="text-3xl font-bold text-blue-400 mb-1">{selectedUser.user_activities?.length || 0}</div>
@@ -526,7 +573,6 @@ export default function AdminDashboard() {
                         </button>
                     </div>
 
-                    {/* NEW: Manual Badge Assignment */}
                     <div className="mb-8 bg-slate-800/50 p-4 rounded-xl border border-white/5">
                         <h4 className="text-xs font-bold uppercase text-slate-400 mb-3 flex items-center gap-2"><Plus size={12}/> Attribution Manuelle</h4>
                         {getUnearnedActivities(selectedUser).length > 0 ? (
@@ -554,7 +600,6 @@ export default function AdminDashboard() {
                         )}
                     </div>
 
-                    {/* History List */}
                     <h3 className="font-bold text-lg mb-4 flex items-center gap-2 text-white"><Clock size={18} className="text-purple-400"/> Historique</h3>
                     <div className="space-y-0 relative border-l border-white/10 ml-2 pl-6 pb-2">
                         {(!selectedUser.user_activities || selectedUser.user_activities.length === 0) ? (
@@ -580,6 +625,7 @@ export default function AdminDashboard() {
             </div>
         </div>
       )}
+      <Toaster position="bottom-right" theme="dark" />
     </div>
   );
 }
