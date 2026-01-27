@@ -1,4 +1,5 @@
 'use client';
+
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
@@ -8,6 +9,7 @@ import {
 import { QRCodeCanvas } from 'qrcode.react';
 import { generateCertificate } from '@/app/utils/generatePdf';
 import { createClient } from '@supabase/supabase-js';
+import * as XLSX from 'xlsx'; // <--- NEW LIBRARY IMPORT
 
 // Initialize Supabase Client
 const supabase = createClient(
@@ -21,13 +23,13 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState('users');
   const [allUsers, setAllUsers] = useState([]);
   
-  // ✅ NEW: Search State
+  // Search State
   const [searchTerm, setSearchTerm] = useState('');
 
-  // ✅ NEW: State for the specific student we are inspecting
+  // Student Inspection State
   const [selectedUser, setSelectedUser] = useState(null);
   
-  // --- Activities State ---
+  // Activities State
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(false);
   
@@ -44,22 +46,23 @@ export default function AdminDashboard() {
     const stored = localStorage.getItem('user');
     if (!stored) { router.push('/login'); return; }
     
-    const user = JSON.parse(stored);
-    // Simple client-side role check (Security should also be enforced by RLS in Supabase)
-    if (user.role !== 'admin' && user.email !== 'admin@test.com') {
-      router.push('/dashboard'); 
-      return;
+    try {
+      const user = JSON.parse(stored);
+      if (user.role !== 'admin' && user.email !== 'admin@test.com') {
+        router.push('/dashboard'); 
+        return;
+      }
+      setAdmin(user);
+      fetchUsers();
+      fetchActivities();
+
+      const interval = setInterval(fetchUsers, 5000); 
+      return () => clearInterval(interval);
+    } catch (e) {
+      router.push('/login');
     }
-    setAdmin(user);
-
-    fetchUsers();
-    fetchActivities();
-
-    const interval = setInterval(fetchUsers, 5000); 
-    return () => clearInterval(interval);
   }, [router]);
 
-  // ✅ UX: Handle "Escape" key to close modal
   useEffect(() => {
     const handleEsc = (e) => {
       if (e.key === 'Escape') setSelectedUser(null);
@@ -89,7 +92,7 @@ export default function AdminDashboard() {
         .order('email', { ascending: true });
 
       if (error) {
-        console.error("Erreur Supabase (Users):", error.message);
+        console.error("Erreur Supabase:", error.message);
       } else {
         setAllUsers(data || []);
       }
@@ -141,7 +144,6 @@ export default function AdminDashboard() {
     ]);
 
     if (error) {
-      console.error(error);
       alert("Erreur: Le code QR existe peut-être déjà ou erreur serveur.");
     } else {
       setNewActivity({ 
@@ -163,40 +165,48 @@ export default function AdminDashboard() {
     else fetchActivities();
   };
 
-  // --- EXPORT EXCEL FUNCTION (NOUVEAU) ---
+  // ✅✅✅ NEW ROBUST EXCEL EXPORT (USING SHEETJS) ✅✅✅
   const handleExportExcel = () => {
-    // 1. En-têtes (séparateur point-virgule pour Excel France)
-    const headers = ["Email;Total Badges;Activités Validées;Date Inscription"];
-    
-    // 2. Données
-    const rows = allUsers.map(user => {
-      const activityNames = user.scans
-        ? user.scans.map(s => s.activities ? s.activities.title : '(Supprimé)').join(' + ')
-        : 'Aucune';
-      
-      const dateInscription = user.created_at ? new Date(user.created_at).toLocaleDateString() : 'N/A';
-      
-      return `${user.email};${user.scans?.length || 0};${activityNames};${dateInscription}`;
+    // 1. Prepare Data clean and flat
+    const dataToExport = allUsers.map(user => {
+        // Format activities list
+        const activityList = user.scans
+            ? user.scans.map(s => s.activities ? s.activities.title : '(Supprimé)').join(', ')
+            : 'Aucune';
+        
+        // Format Date properly
+        const dateInscription = user.created_at ? new Date(user.created_at).toLocaleDateString('fr-FR') : 'N/A';
+
+        return {
+            "ID Utilisateur": user.id,
+            "Email": user.email,
+            "Nombre Badges": user.scans?.length || 0,
+            "Liste Activités": activityList,
+            "Date Inscription": dateInscription
+        };
     });
 
-    // 3. Création du Blob (avec BOM \uFEFF pour les accents)
-    const csvContent = "\uFEFF" + [headers, ...rows].join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    
-    // 4. Téléchargement
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute("download", `export_utilisateurs_${new Date().toLocaleDateString().replace(/\//g, '-')}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // 2. Create Workbook and Worksheet
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+
+    // 3. Auto-adjust column width (Optional but nice)
+    const wscols = [
+        { wch: 30 }, // ID width
+        { wch: 30 }, // Email width
+        { wch: 15 }, // Badges width
+        { wch: 50 }, // Activities width
+        { wch: 20 }, // Date width
+    ];
+    worksheet['!cols'] = wscols;
+
+    // 4. Append and Download
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Participants");
+    XLSX.writeFile(workbook, `Ficam_Participants_${new Date().toLocaleDateString('fr-FR').replace(/\//g, '-')}.xlsx`);
   };
 
-  // Helper Functions
   const getName = (email) => email ? email.split('@')[0] : 'Inconnu';
   
-  // ✅ Filter Users based on Search
   const filteredUsers = allUsers.filter(u => 
     u.email?.toLowerCase().includes(searchTerm.toLowerCase()) || 
     getName(u.email).toLowerCase().includes(searchTerm.toLowerCase())
@@ -210,7 +220,6 @@ export default function AdminDashboard() {
             </div>
         );
     }
-
     return (
         <div className="flex flex-wrap gap-2">
             {user.scans.map((scan) => {
@@ -244,25 +253,17 @@ export default function AdminDashboard() {
             </div>
             <div>
                 <div className="font-bold text-lg">Admin OS</div>
-                <div className="text-[10px] text-blue-500/80 font-mono tracking-widest">v3.2 Excel</div>
+                <div className="text-[10px] text-blue-500/80 font-mono tracking-widest">v4.0 Pro</div>
             </div>
         </div>
 
         <nav className="flex md:flex-col gap-2">
-          <button 
-            onClick={() => setActiveTab('users')}
-            className={`p-3 rounded-lg flex items-center gap-3 font-medium transition-colors w-full text-left ${activeTab === 'users' ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20' : 'text-slate-400 hover:bg-white/5'}`}
-          >
+          <button onClick={() => setActiveTab('users')} className={`p-3 rounded-lg flex items-center gap-3 font-medium transition-colors w-full text-left ${activeTab === 'users' ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20' : 'text-slate-400 hover:bg-white/5'}`}>
             <Users size={18} /> Utilisateurs
           </button>
-
-          <button 
-            onClick={() => setActiveTab('steps')}
-            className={`p-3 rounded-lg flex items-center gap-3 font-medium transition-colors w-full text-left ${activeTab === 'steps' ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20' : 'text-slate-400 hover:bg-white/5'}`}
-          >
+          <button onClick={() => setActiveTab('steps')} className={`p-3 rounded-lg flex items-center gap-3 font-medium transition-colors w-full text-left ${activeTab === 'steps' ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20' : 'text-slate-400 hover:bg-white/5'}`}>
             <QrCode size={18} /> Activités & QR
           </button>
-          
           <div onClick={() => router.push('/dashboard')} className="md:mt-auto border-t md:border-white/10 md:pt-4 text-slate-400 p-3 rounded-lg flex items-center gap-3 font-medium hover:text-purple-400 cursor-pointer">
             <LayoutGrid size={18} /> Retour au Jeu
           </div>
@@ -278,19 +279,18 @@ export default function AdminDashboard() {
                 <header className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
                     <div>
                         <h1 className="text-3xl font-bold mb-1">Utilisateurs</h1>
-                        <p className="text-slate-400 text-sm">Suivi des présences et des badges obtenus.</p>
+                        <p className="text-slate-400 text-sm">Suivi des présences et des badges.</p>
                     </div>
                     
                     <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
-                        {/* ✅ EXPORT EXCEL BUTTON (NOUVEAU) */}
+                        {/* ✅ EXPORT EXCEL BUTTON */}
                         <button 
                             onClick={handleExportExcel}
                             className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2 font-bold transition-all text-sm h-[42px]"
                         >
-                            <Download size={18} /> Excel
+                            <Download size={18} /> Excel (.xlsx)
                         </button>
 
-                        {/* ✅ Search Bar */}
                         <div className="relative">
                             <input 
                                 type="text" 
@@ -316,11 +316,7 @@ export default function AdminDashboard() {
                             </thead>
                             <tbody className="divide-y divide-white/5 text-sm">
                                 {filteredUsers.length === 0 ? (
-                                    <tr>
-                                        <td colSpan="3" className="p-8 text-center text-slate-500">
-                                            {searchTerm ? "Aucun résultat pour cette recherche." : "Aucun utilisateur trouvé..."}
-                                        </td>
-                                    </tr>
+                                    <tr><td colSpan={3} className="p-8 text-center text-slate-500">Aucun utilisateur trouvé...</td></tr>
                                 ) : (
                                     filteredUsers.map((u, i) => (
                                         <tr key={u.id || i} className="hover:bg-white/5 transition-colors">
@@ -330,17 +326,9 @@ export default function AdminDashboard() {
                                                 </div>
                                                 <span className="font-medium text-white truncate">{getName(u.email)}</span>
                                             </td>
-                                            
-                                            <td className="p-4">
-                                                {renderBadges(u)}
-                                            </td>
-
+                                            <td className="p-4">{renderBadges(u)}</td>
                                             <td className="p-4 text-right">
-                                                <button 
-                                                    onClick={() => setSelectedUser(u)}
-                                                    className="bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white p-2 rounded-lg transition-colors"
-                                                    title="Inspecter"
-                                                >
+                                                <button onClick={() => setSelectedUser(u)} className="bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white p-2 rounded-lg transition-colors">
                                                     <Eye size={18} />
                                                 </button>
                                             </td>
@@ -367,7 +355,6 @@ export default function AdminDashboard() {
                     <div className="lg:col-span-1">
                         <div className="bg-[#11111a] p-6 rounded-2xl border border-white/5 sticky top-6">
                             <h3 className="font-bold mb-4 flex items-center gap-2"><Plus size={18}/> Nouvelle Activité</h3>
-                            
                             <div className="space-y-4">
                                 <div>
                                     <label className="text-xs text-slate-500 uppercase font-bold">Type</label>
@@ -382,122 +369,49 @@ export default function AdminDashboard() {
                                 </div>
                                 <div>
                                     <label className="text-xs text-slate-500 uppercase font-bold">Titre</label>
-                                    <input 
-                                        type="text" 
-                                        placeholder="Ex: Atelier 3D"
-                                        className="w-full bg-black/20 border border-white/10 rounded-lg p-3 text-sm focus:border-blue-500 outline-none text-white mt-1"
-                                        value={newActivity.title}
-                                        onChange={(e) => setNewActivity({...newActivity, title: e.target.value})}
-                                    />
+                                    <input type="text" placeholder="Ex: Atelier 3D" className="w-full bg-black/20 border border-white/10 rounded-lg p-3 text-sm focus:border-blue-500 outline-none text-white mt-1" value={newActivity.title} onChange={(e) => setNewActivity({...newActivity, title: e.target.value})} />
                                 </div>
-                                {/* ... Other inputs remain similar ... */}
                                 <div>
                                     <label className="text-xs text-slate-500 uppercase font-bold">Description</label>
-                                    <input 
-                                        type="text" 
-                                        placeholder="Ex: Salle 104"
-                                        className="w-full bg-black/20 border border-white/10 rounded-lg p-3 text-sm focus:border-blue-500 outline-none text-white mt-1"
-                                        value={newActivity.description}
-                                        onChange={(e) => setNewActivity({...newActivity, description: e.target.value})}
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="text-xs text-slate-500 uppercase font-bold">Question de validation</label>
-                                    <input 
-                                        type="text" 
-                                        placeholder="Ex: Quelle est la couleur du logo ?"
-                                        className="w-full bg-black/20 border border-white/10 rounded-lg p-3 text-sm focus:border-blue-500 outline-none text-white mt-1"
-                                        value={newActivity.question_text}
-                                        onChange={(e) => setNewActivity({...newActivity, question_text: e.target.value})}
-                                    />
+                                    <input type="text" placeholder="Ex: Salle 104" className="w-full bg-black/20 border border-white/10 rounded-lg p-3 text-sm focus:border-blue-500 outline-none text-white mt-1" value={newActivity.description} onChange={(e) => setNewActivity({...newActivity, description: e.target.value})} />
                                 </div>
                                 <div>
-                                    <label className="text-xs text-slate-500 uppercase font-bold">Réponse Attendue</label>
-                                    <input 
-                                        type="text" 
-                                        placeholder="Ex: Rouge"
-                                        className="w-full bg-black/20 border border-white/10 rounded-lg p-3 text-sm focus:border-green-500 outline-none text-white mt-1"
-                                        value={newActivity.correct_answer}
-                                        onChange={(e) => setNewActivity({...newActivity, correct_answer: e.target.value})}
-                                    />
+                                    <label className="text-xs text-slate-500 uppercase font-bold">Question</label>
+                                    <input type="text" placeholder="Question..." className="w-full bg-black/20 border border-white/10 rounded-lg p-3 text-sm focus:border-blue-500 outline-none text-white mt-1" value={newActivity.question_text} onChange={(e) => setNewActivity({...newActivity, question_text: e.target.value})} />
                                 </div>
-
                                 <div>
-                                    <label className="text-xs text-slate-500 uppercase font-bold">Code QR (Secret)</label>
-                                    <input 
-                                        type="text" 
-                                        placeholder="Ex: FICAM-JOUR1-MATIN"
-                                        className="w-full bg-black/20 border border-white/10 rounded-lg p-3 text-sm focus:border-blue-500 outline-none text-white mt-1"
-                                        value={newActivity.qr_code}
-                                        onChange={(e) => setNewActivity({...newActivity, qr_code: e.target.value})}
-                                    />
+                                    <label className="text-xs text-slate-500 uppercase font-bold">Réponse</label>
+                                    <input type="text" placeholder="Réponse..." className="w-full bg-black/20 border border-white/10 rounded-lg p-3 text-sm focus:border-green-500 outline-none text-white mt-1" value={newActivity.correct_answer} onChange={(e) => setNewActivity({...newActivity, correct_answer: e.target.value})} />
                                 </div>
-                                <button 
-                                    onClick={handleAddActivity}
-                                    className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg transition-all"
-                                >
-                                    {loading ? "Chargement..." : "Créer l'activité"}
-                                </button>
+                                <div>
+                                    <label className="text-xs text-slate-500 uppercase font-bold">QR Code</label>
+                                    <input type="text" placeholder="CODE-SECRET" className="w-full bg-black/20 border border-white/10 rounded-lg p-3 text-sm focus:border-blue-500 outline-none text-white mt-1" value={newActivity.qr_code} onChange={(e) => setNewActivity({...newActivity, qr_code: e.target.value})} />
+                                </div>
+                                <button onClick={handleAddActivity} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg transition-all">{loading ? "..." : "Créer"}</button>
                             </div>
                         </div>
                     </div>
 
                     {/* LIST */}
                     <div className="lg:col-span-2 grid gap-4">
-                        {activities.length === 0 && (
-                            <div className="text-slate-500 text-center py-10">Aucune activité trouvée. Ajoutez-en une !</div>
-                        )}
                         {activities.map((act) => (
                             <div key={act.id} className="bg-[#11111a] p-4 rounded-2xl border border-white/5 flex items-center gap-6 group hover:border-white/10 transition-all">
-                                
                                 <div className="bg-white p-2 rounded-lg shrink-0 flex items-center justify-center">
-                                    <QRCodeCanvas 
-                                        id={`qr-canvas-${act.id}`} 
-                                        value={act.qr_code} 
-                                        size={80}
-                                        level={"H"}
-                                        includeMargin={true}
-                                    />
+                                    <QRCodeCanvas id={`qr-canvas-${act.id}`} value={act.qr_code} size={80} level={"H"} includeMargin={true}/>
                                 </div>
-
                                 <div className="flex-1">
                                     <div className="flex justify-between items-start">
                                         <h3 className="font-bold text-lg">{act.title}</h3>
-                                        {act.type === 'matin' ? (
-                                            <span className="text-[10px] bg-yellow-500/20 text-yellow-500 px-2 py-1 rounded uppercase font-bold">🌞 Matin</span>
-                                        ) : (
-                                            <span className="text-[10px] bg-purple-500/20 text-purple-500 px-2 py-1 rounded uppercase font-bold">🎬 Aprèm</span>
-                                        )}
+                                        <span className={`text-[10px] px-2 py-1 rounded uppercase font-bold ${act.type==='matin' ? 'bg-yellow-500/20 text-yellow-500' : 'bg-purple-500/20 text-purple-500'}`}>{act.type==='matin'?'Matin':'Aprèm'}</span>
                                     </div>
                                     <p className="text-slate-400 text-sm mb-1">{act.description}</p>
-                                    
-                                    <div className="text-xs text-slate-500 italic mb-2">
-                                        Q: {act.question_text || "Aucune"} | R: {act.correct_answer || "Aucune"}
-                                    </div>
-
-                                    <span className="bg-slate-800 text-slate-400 text-xs px-2 py-1 rounded font-mono">
-                                        QR: {act.qr_code}
-                                    </span>
+                                    <div className="text-xs text-slate-500 italic mb-2">Q: {act.question_text} | R: {act.correct_answer}</div>
+                                    <span className="bg-slate-800 text-slate-400 text-xs px-2 py-1 rounded font-mono">QR: {act.qr_code}</span>
                                 </div>
-                                
                                 <div className="flex flex-col gap-2">
-                                    <button 
-                                        onClick={() => downloadQR(act)}
-                                        className="p-3 text-slate-600 hover:text-blue-500 hover:bg-blue-500/10 rounded-lg transition-colors"
-                                        title="Télécharger QR"
-                                    >
-                                        <Download size={20} />
-                                    </button>
-                                    <button 
-                                        onClick={() => handleDeleteActivity(act.id)}
-                                        className="p-3 text-slate-600 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
-                                        title="Supprimer"
-                                    >
-                                        <Trash2 size={20} />
-                                    </button>
+                                    <button onClick={() => downloadQR(act)} className="p-3 text-slate-600 hover:text-blue-500 hover:bg-blue-500/10 rounded-lg"><Download size={20} /></button>
+                                    <button onClick={() => handleDeleteActivity(act.id)} className="p-3 text-slate-600 hover:text-red-500 hover:bg-red-500/10 rounded-lg"><Trash2 size={20} /></button>
                                 </div>
-
                             </div>
                         ))}
                     </div>
@@ -507,97 +421,47 @@ export default function AdminDashboard() {
 
       </main>
 
-      {/* ✅✅✅ MODAL: STUDENT INSPECTOR ✅✅✅ */}
+      {/* MODAL */}
       {selectedUser && (
-        <div 
-            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={() => setSelectedUser(null)} // Click outside closes modal
-        >
-            <div 
-                className="bg-[#1a1a24] w-full max-w-2xl rounded-2xl border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
-                onClick={(e) => e.stopPropagation()} // Click inside prevents closing
-            >
-                
-                {/* Header */}
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setSelectedUser(null)}>
+            <div className="bg-[#1a1a24] w-full max-w-2xl rounded-2xl border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
                 <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/5">
                     <div>
                         <h2 className="text-2xl font-bold text-white">{getName(selectedUser.email)}</h2>
                         <p className="text-slate-400 text-xs font-mono">{selectedUser.email}</p>
                     </div>
-                    <button 
-                        onClick={() => setSelectedUser(null)}
-                        className="p-2 hover:bg-white/10 rounded-full transition-colors text-slate-400 hover:text-white"
-                    >
-                        <X size={24} />
-                    </button>
+                    <button onClick={() => setSelectedUser(null)} className="p-2 hover:bg-white/10 rounded-full transition-colors text-slate-400 hover:text-white"><X size={24} /></button>
                 </div>
-
-                {/* Content */}
                 <div className="p-6 overflow-y-auto">
-                    
-                    {/* Stats & Certificate */}
                     <div className="grid grid-cols-2 gap-4 mb-8">
                         <div className="bg-blue-500/10 border border-blue-500/20 p-4 rounded-xl text-center">
-                            <div className="text-3xl font-bold text-blue-400 mb-1">
-                                {selectedUser.scans ? selectedUser.scans.length : 0}
-                            </div>
+                            <div className="text-3xl font-bold text-blue-400 mb-1">{selectedUser.scans ? selectedUser.scans.length : 0}</div>
                             <div className="text-[10px] uppercase text-slate-400 font-bold tracking-wider">Activités Validées</div>
                         </div>
-                        <button
-                            onClick={() => generateCertificate(getName(selectedUser.email), new Date().toLocaleDateString())}
-                            className="bg-green-600/10 border border-green-500/20 hover:bg-green-600/20 hover:text-green-400 text-green-500 p-4 rounded-xl flex flex-col items-center justify-center transition-all gap-2"
-                        >
+                        <button onClick={() => generateCertificate(getName(selectedUser.email), new Date().toLocaleDateString())} className="bg-green-600/10 border border-green-500/20 hover:bg-green-600/20 hover:text-green-400 text-green-500 p-4 rounded-xl flex flex-col items-center justify-center transition-all gap-2">
                             <Download size={24} />
                             <span className="text-xs font-bold uppercase">Attestation PDF</span>
                         </button>
                     </div>
-
-                    {/* Timeline */}
-                    <h3 className="font-bold text-lg mb-4 flex items-center gap-2 text-white">
-                        <Clock size={18} className="text-purple-400"/> Historique d'activité
-                    </h3>
-
+                    <h3 className="font-bold text-lg mb-4 flex items-center gap-2 text-white"><Clock size={18} className="text-purple-400"/> Historique d'activité</h3>
                     <div className="space-y-0 relative border-l border-white/10 ml-2 pl-6 pb-2">
-                        {(!selectedUser.scans || selectedUser.scans.length === 0) ? (
-                            <div className="text-slate-500 italic py-4">Aucune activité enregistrée.</div>
-                        ) : (
-                            selectedUser.scans
-                            .sort((a, b) => new Date(b.created_at) - new Date(a.created_at)) // Sort: Newest first
-                            .map((scan, index) => {
-                                // Defensive programming: handle deleted activities
-                                const activityTitle = scan.activities?.title || 'Activité inconnue (Supprimée)';
-                                const activityType = scan.activities?.type || 'unknown';
-                                const dateObj = new Date(scan.created_at);
-                                
-                                return (
-                                    <div key={scan.id || index} className="relative mb-6 last:mb-0">
-                                        {/* Dot on timeline */}
-                                        <div className={`absolute -left-[31px] top-1 w-4 h-4 rounded-full border-2 ${activityType === 'matin' ? 'bg-yellow-500 border-[#1a1a24]' : 'bg-purple-500 border-[#1a1a24]'}`}></div>
-                                        
-                                        <div className="bg-white/5 p-4 rounded-xl border border-white/5 hover:bg-white/10 transition-colors">
-                                            <div className="flex justify-between items-start mb-1">
-                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${activityType === 'matin' ? 'bg-yellow-500/20 text-yellow-500' : 'bg-purple-500/20 text-purple-400'}`}>
-                                                    {activityType === 'matin' ? 'Atelier' : (activityType === 'unknown' ? '?' : 'Film')}
-                                                </span>
-                                                <span className="text-xs text-slate-500 font-mono flex items-center gap-1">
-                                                    {dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                                                    <Calendar size={10} />
-                                                    {dateObj.toLocaleDateString()}
-                                                </span>
-                                            </div>
-                                            <div className="font-bold text-white text-lg">{activityTitle}</div>
-                                        </div>
+                        {(!selectedUser.scans || selectedUser.scans.length === 0) ? <div className="text-slate-500 italic py-4">Aucune activité.</div> : selectedUser.scans.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).map((scan,i)=>(
+                            <div key={scan.id||i} className="relative mb-6 last:mb-0">
+                                <div className={`absolute -left-[31px] top-1 w-4 h-4 rounded-full border-2 ${scan.activities?.type==='matin'?'bg-yellow-500 border-[#1a1a24]':'bg-purple-500 border-[#1a1a24]'}`}></div>
+                                <div className="bg-white/5 p-4 rounded-xl border border-white/5">
+                                    <div className="flex justify-between items-start mb-1">
+                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${scan.activities?.type==='matin'?'bg-yellow-500/20 text-yellow-500':'bg-purple-500/20 text-purple-400'}`}>{scan.activities?.type==='matin'?'Atelier':'Film'}</span>
+                                        <span className="text-xs text-slate-500 font-mono flex items-center gap-1">{new Date(scan.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>
                                     </div>
-                                );
-                            })
-                        )}
+                                    <div className="font-bold text-white text-lg">{scan.activities?.title || '(Supprimé)'}</div>
+                                </div>
+                            </div>
+                        ))}
                     </div>
-
                 </div>
             </div>
         </div>
       )}
-
     </div>
   );
 }
