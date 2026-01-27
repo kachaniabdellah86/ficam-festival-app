@@ -146,15 +146,15 @@ export default function Dashboard() {
   if (loading) return <div className="fixed inset-0 bg-[#020617] flex items-center justify-center"><Loader2 className="animate-spin text-indigo-500" size={40} /></div>;
 
   return (
-    // MAIN CONTAINER: Dark Slate Background (Matches Admin/Login)
-    <div className="min-h-screen bg-[#020617] text-slate-100 font-sans selection:bg-indigo-500/30 pb-24 relative overflow-x-hidden">
+    // MAIN CONTAINER: Changed pb-24 to pb-36 for better scrolling
+    <div className="min-h-screen bg-[#020617] text-slate-100 font-sans selection:bg-indigo-500/30 pb-36 relative overflow-x-hidden">
       
       {/* --- AMBIENT BACKGROUND GLOW --- */}
       <div className="fixed top-[-10%] left-[-10%] w-[50%] h-[50%] bg-violet-600/10 rounded-full blur-[120px] pointer-events-none"></div>
       <div className="fixed bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-indigo-600/10 rounded-full blur-[120px] pointer-events-none"></div>
 
       {/* --- HEADER --- */}
-      <header className="fixed top-0 w-full z-40 bg-[#020617]/80 backdrop-blur-xl border-b border-white/5 px-6 py-4 flex justify-between items-center">
+      <header className="fixed top-0 w-full z-40 bg-[#020617]/80 backdrop-blur-xl border-b border-white/5 px-6 py-4 flex justify-between items-center safe-top">
         <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/20">F</div>
             <div>
@@ -300,7 +300,11 @@ export default function Dashboard() {
       </main>
 
       {/* --- BOTTOM NAVIGATION (MOBILE) --- */}
-      <nav className="fixed bottom-0 w-full z-30 bg-[#020617]/90 backdrop-blur-xl border-t border-white/10 pb-safe pt-2 px-6">
+      {/* ADDED style for safe-area-inset-bottom to handle iPhone White Bar */}
+      <nav 
+        className="fixed bottom-0 w-full z-30 bg-[#020617]/90 backdrop-blur-xl border-t border-white/10 px-6 pt-2"
+        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 0.5rem)' }}
+      >
           <div className="flex justify-around items-center h-16 max-w-md mx-auto">
               <button 
                   onClick={() => setActiveTab('home')}
@@ -334,8 +338,8 @@ export default function Dashboard() {
       {isScanning && (
         <div className="fixed inset-0 z-[100] bg-black flex flex-col animate-in fade-in duration-200">
             
-            {/* Scanner Controls */}
-            <div className="absolute top-0 left-0 w-full p-6 flex justify-between items-center z-20 bg-gradient-to-b from-black/80 to-transparent">
+            {/* Scanner Controls - Added pt-12 to clear top safe area */}
+            <div className="absolute top-0 left-0 w-full p-6 pt-12 flex justify-between items-center z-20 bg-gradient-to-b from-black/80 to-transparent">
                 <div className="bg-black/40 backdrop-blur-md px-4 py-2 rounded-full border border-white/10">
                     <span className="text-white font-bold text-sm flex items-center gap-2"><ScanLine size={16} className="text-indigo-500 animate-pulse"/> Mode Scan</span>
                 </div>
