@@ -1,8 +1,10 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-// ✅ ADDED: Eye, X, Clock, Calendar icons
-import { Shield, Users, LayoutGrid, QrCode, Trash2, Plus, Download, Medal, Eye, X, Clock, Calendar } from 'lucide-react';
+import { 
+  Shield, Users, LayoutGrid, QrCode, Trash2, Plus, 
+  Download, Medal, Eye, X, Clock, Calendar, Search 
+} from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { generateCertificate } from '@/app/utils/generatePdf';
 import { createClient } from '@supabase/supabase-js';
@@ -18,6 +20,9 @@ export default function AdminDashboard() {
   const [admin, setAdmin] = useState(null);
   const [activeTab, setActiveTab] = useState('users');
   const [allUsers, setAllUsers] = useState([]);
+  
+  // ✅ NEW: Search State
+  const [searchTerm, setSearchTerm] = useState('');
 
   // ✅ NEW: State for the specific student we are inspecting
   const [selectedUser, setSelectedUser] = useState(null);
@@ -40,6 +45,7 @@ export default function AdminDashboard() {
     if (!stored) { router.push('/login'); return; }
     
     const user = JSON.parse(stored);
+    // Simple client-side role check (Security should also be enforced by RLS in Supabase)
     if (user.role !== 'admin' && user.email !== 'admin@test.com') {
       router.push('/dashboard'); 
       return;
@@ -53,6 +59,15 @@ export default function AdminDashboard() {
     return () => clearInterval(interval);
   }, [router]);
 
+  // ✅ UX: Handle "Escape" key to close modal
+  useEffect(() => {
+    const handleEsc = (e) => {
+      if (e.key === 'Escape') setSelectedUser(null);
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, []);
+
   // --- FETCHERS ---
   const fetchUsers = async () => {
     try {
@@ -61,6 +76,7 @@ export default function AdminDashboard() {
         .select(`
           *,
           scans (
+            id,
             created_at,
             activities (
               id,
@@ -132,7 +148,7 @@ export default function AdminDashboard() {
           title: '', 
           description: '', 
           qr_code: '', 
-          type: 'matin',
+          type: 'matin', 
           question_text: '',
           correct_answer: ''
       });
@@ -147,7 +163,14 @@ export default function AdminDashboard() {
     else fetchActivities();
   };
 
+  // Helper Functions
   const getName = (email) => email ? email.split('@')[0] : 'Inconnu';
+  
+  // ✅ Filter Users based on Search
+  const filteredUsers = allUsers.filter(u => 
+    u.email?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    getName(u.email).toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   const renderBadges = (user) => {
     if (!user.scans || user.scans.length === 0) {
@@ -160,11 +183,11 @@ export default function AdminDashboard() {
 
     return (
         <div className="flex flex-wrap gap-2">
-            {user.scans.map((scan, index) => {
+            {user.scans.map((scan) => {
                 if (!scan.activities) return null;
                 const isMatin = scan.activities.type === 'matin';
                 return (
-                    <span key={index} className={`
+                    <span key={scan.id || Math.random()} className={`
                         flex items-center gap-1 px-2 py-1 rounded-md text-[10px] uppercase font-bold border
                         ${isMatin 
                             ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20' 
@@ -191,7 +214,7 @@ export default function AdminDashboard() {
             </div>
             <div>
                 <div className="font-bold text-lg">Admin OS</div>
-                <div className="text-[10px] text-blue-500/80 font-mono tracking-widest">v3.0 DB</div>
+                <div className="text-[10px] text-blue-500/80 font-mono tracking-widest">v3.1 DB</div>
             </div>
         </div>
 
@@ -222,55 +245,71 @@ export default function AdminDashboard() {
         {/* === USERS TAB === */}
         {activeTab === 'users' && (
             <>
-                <header className="mb-8">
-                    <h1 className="text-3xl font-bold mb-1">Utilisateurs</h1>
-                    <p className="text-slate-400 text-sm">Suivi des présences et des badges obtenus.</p>
+                <header className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
+                    <div>
+                        <h1 className="text-3xl font-bold mb-1">Utilisateurs</h1>
+                        <p className="text-slate-400 text-sm">Suivi des présences et des badges obtenus.</p>
+                    </div>
+                    
+                    {/* ✅ Search Bar */}
+                    <div className="relative">
+                        <input 
+                            type="text" 
+                            placeholder="Rechercher un utilisateur..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="bg-[#1a1a24] border border-white/10 rounded-lg py-2 pl-10 pr-4 text-sm text-white focus:border-blue-500 outline-none w-full md:w-64"
+                        />
+                        <Search size={16} className="absolute left-3 top-2.5 text-slate-500" />
+                    </div>
                 </header>
 
                 <div className="bg-[#11111a] border border-white/5 rounded-2xl overflow-hidden">
-                    <table className="w-full text-left border-collapse">
-                        <thead className="bg-white/5 text-slate-400 text-sm">
-                            <tr>
-                                <th className="p-4 w-1/4">Utilisateur</th>
-                                <th className="p-4 w-1/2">Badges Validés</th>
-                                <th className="p-4 w-1/4 text-right">Détails</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-white/5 text-sm">
-                            {allUsers.length === 0 ? (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse min-w-[600px]">
+                            <thead className="bg-white/5 text-slate-400 text-sm">
                                 <tr>
-                                    <td colSpan="3" className="p-8 text-center text-slate-500">
-                                        Aucun utilisateur trouvé...
-                                    </td>
+                                    <th className="p-4 w-1/4">Utilisateur</th>
+                                    <th className="p-4 w-1/2">Badges Validés</th>
+                                    <th className="p-4 w-1/4 text-right">Détails</th>
                                 </tr>
-                            ) : (
-                                allUsers.map((u, i) => (
-                                    <tr key={i} className="hover:bg-white/5 transition-colors">
-                                        <td className="p-4 flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center font-bold text-xs text-white">
-                                                {u.email ? u.email.charAt(0).toUpperCase() : '?'}
-                                            </div>
-                                            <span className="font-medium text-white">{getName(u.email)}</span>
-                                        </td>
-                                        
-                                        <td className="p-4">
-                                            {renderBadges(u)}
-                                        </td>
-
-                                        <td className="p-4 text-right">
-                                            {/* ✅ NEW: Eye Button to open Inspector */}
-                                            <button 
-                                                onClick={() => setSelectedUser(u)}
-                                                className="bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white p-2 rounded-lg transition-colors"
-                                            >
-                                                <Eye size={18} />
-                                            </button>
+                            </thead>
+                            <tbody className="divide-y divide-white/5 text-sm">
+                                {filteredUsers.length === 0 ? (
+                                    <tr>
+                                        <td colSpan="3" className="p-8 text-center text-slate-500">
+                                            {searchTerm ? "Aucun résultat pour cette recherche." : "Aucun utilisateur trouvé..."}
                                         </td>
                                     </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
+                                ) : (
+                                    filteredUsers.map((u, i) => (
+                                        <tr key={u.id || i} className="hover:bg-white/5 transition-colors">
+                                            <td className="p-4 flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center font-bold text-xs text-white shrink-0">
+                                                    {u.email ? u.email.charAt(0).toUpperCase() : '?'}
+                                                </div>
+                                                <span className="font-medium text-white truncate">{getName(u.email)}</span>
+                                            </td>
+                                            
+                                            <td className="p-4">
+                                                {renderBadges(u)}
+                                            </td>
+
+                                            <td className="p-4 text-right">
+                                                <button 
+                                                    onClick={() => setSelectedUser(u)}
+                                                    className="bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white p-2 rounded-lg transition-colors"
+                                                    title="Inspecter"
+                                                >
+                                                    <Eye size={18} />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </>
         )}
@@ -311,6 +350,7 @@ export default function AdminDashboard() {
                                         onChange={(e) => setNewActivity({...newActivity, title: e.target.value})}
                                     />
                                 </div>
+                                {/* ... Other inputs remain similar ... */}
                                 <div>
                                     <label className="text-xs text-slate-500 uppercase font-bold">Description</label>
                                     <input 
@@ -376,7 +416,7 @@ export default function AdminDashboard() {
                                         id={`qr-canvas-${act.id}`} 
                                         value={act.qr_code} 
                                         size={80}
-                                        level={"H"} // High Error Correction
+                                        level={"H"}
                                         includeMargin={true}
                                     />
                                 </div>
@@ -429,8 +469,14 @@ export default function AdminDashboard() {
 
       {/* ✅✅✅ MODAL: STUDENT INSPECTOR ✅✅✅ */}
       {selectedUser && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-[#1a1a24] w-full max-w-2xl rounded-2xl border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div 
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => setSelectedUser(null)} // Click outside closes modal
+        >
+            <div 
+                className="bg-[#1a1a24] w-full max-w-2xl rounded-2xl border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+                onClick={(e) => e.stopPropagation()} // Click inside prevents closing
+            >
                 
                 {/* Header */}
                 <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/5">
@@ -478,19 +524,20 @@ export default function AdminDashboard() {
                             selectedUser.scans
                             .sort((a, b) => new Date(b.created_at) - new Date(a.created_at)) // Sort: Newest first
                             .map((scan, index) => {
-                                const activityTitle = scan.activities ? scan.activities.title : 'Activité inconnue';
-                                const activityType = scan.activities ? scan.activities.type : '';
+                                // Defensive programming: handle deleted activities
+                                const activityTitle = scan.activities?.title || 'Activité inconnue (Supprimée)';
+                                const activityType = scan.activities?.type || 'unknown';
                                 const dateObj = new Date(scan.created_at);
                                 
                                 return (
-                                    <div key={index} className="relative mb-6 last:mb-0">
+                                    <div key={scan.id || index} className="relative mb-6 last:mb-0">
                                         {/* Dot on timeline */}
                                         <div className={`absolute -left-[31px] top-1 w-4 h-4 rounded-full border-2 ${activityType === 'matin' ? 'bg-yellow-500 border-[#1a1a24]' : 'bg-purple-500 border-[#1a1a24]'}`}></div>
                                         
                                         <div className="bg-white/5 p-4 rounded-xl border border-white/5 hover:bg-white/10 transition-colors">
                                             <div className="flex justify-between items-start mb-1">
                                                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${activityType === 'matin' ? 'bg-yellow-500/20 text-yellow-500' : 'bg-purple-500/20 text-purple-400'}`}>
-                                                    {activityType === 'matin' ? 'Atelier' : 'Film'}
+                                                    {activityType === 'matin' ? 'Atelier' : (activityType === 'unknown' ? '?' : 'Film')}
                                                 </span>
                                                 <span className="text-xs text-slate-500 font-mono flex items-center gap-1">
                                                     {dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}

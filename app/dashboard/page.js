@@ -24,6 +24,7 @@ export default function Dashboard() {
   // UI STATES
   const [isScanning, setIsScanning] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false); // NEW: To prevent double clicks
   
   // Q&A MODAL STATES
   const [showQaModal, setShowQaModal] = useState(false);
@@ -32,19 +33,23 @@ export default function Dashboard() {
   const [scanFeedback, setScanFeedback] = useState(null); 
 
   // --- 1. FETCH DATA ---
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (isRefresh = false) => {
     try {
-      setRefreshing(true);
+      if (isRefresh) setRefreshing(true);
+      
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) { router.push('/login'); return; }
 
+      // Get detailed user profile (for role)
       const { data: dbUser } = await supabase.from('users').select('*').eq('id', authUser.id).single();
       setUser(dbUser || authUser);
 
+      // Get Activities
       const { data: allActivities, error: actError } = await supabase.from('activities').select('*').order('id', { ascending: true });
       if (actError) console.error("Database Error (Activities):", actError.message);
       if (allActivities) setActivities(allActivities);
 
+      // Get History
       const { data: history } = await supabase.from('user_activities').select('activity_id, is_correct').eq('user_id', authUser.id);
       if (history) setMyHistory(history);
 
@@ -72,20 +77,28 @@ export default function Dashboard() {
   // --- 3. ACTIONS ---
   const handleScan = (result) => {
     if (!result || !result[0]) return;
-    const code = result[0].rawValue;
+    
+    // Stop scanning immediately to prevent duplicate triggers
     setIsScanning(false); 
+    const code = result[0].rawValue;
 
     const activity = activities.find(a => a.qr_code === code);
+    
+    // Case 1: Invalid Code
     if (!activity) {
         setScanFeedback({ type: 'error', msg: 'Code QR inconnu ou invalide.' });
         setShowQaModal(true); 
         return;
     }
+
+    // Case 2: Already Done
     if (myDoneIds.includes(activity.id)) {
         setScanFeedback({ type: 'warning', msg: 'Vous avez déjà validé cette activité !' });
         setShowQaModal(true);
         return;
     }
+
+    // Case 3: Success - Open Question Modal
     setCurrentActivity(activity);
     setUserAnswer('');
     setScanFeedback(null);
@@ -94,20 +107,37 @@ export default function Dashboard() {
 
   const submitAnswer = async () => {
     if (!userAnswer.trim()) return;
+    setIsSubmitting(true); // Lock button
+
     try {
         const { data, error } = await supabase.rpc('attempt_scan', { 
-            qr_text: currentActivity.qr_code, user_answer: userAnswer, device: 'web'
+            qr_text: currentActivity.qr_code, 
+            user_answer: userAnswer, 
+            device: 'web'
         });
+
         if (error) throw error;
+
         if (data && data.success) {
+            // Optimistic Update: Add to local history immediately for snappy UI
+            setMyHistory(prev => [...prev, { activity_id: currentActivity.id, is_correct: true }]);
+            
             setScanFeedback({ type: 'success', msg: data.msg });
-            setTimeout(async () => { await fetchData(); setShowQaModal(false); setCurrentActivity(null); }, 1500);
+            
+            // Close modal after delay and refresh in background
+            setTimeout(async () => { 
+                setShowQaModal(false); 
+                setCurrentActivity(null); 
+                await fetchData(false); // Silent refresh
+            }, 1500);
         } else {
             setScanFeedback({ type: 'error', msg: data?.msg || "Mauvaise réponse" }); 
         }
     } catch (err) {
         console.error("Error submitting:", err);
-        setScanFeedback({ type: 'error', msg: "Erreur technique." });
+        setScanFeedback({ type: 'error', msg: "Erreur technique. Réessayez." });
+    } finally {
+        setIsSubmitting(false);
     }
   };
 
@@ -116,7 +146,7 @@ export default function Dashboard() {
     router.push('/login');
   };
 
-  if (loading) return <div className="min-h-screen bg-[#0F0F1A] flex items-center justify-center text-white"><Loader2 className="animate-spin" /></div>;
+  if (loading) return <div className="min-h-screen bg-[#0F0F1A] flex items-center justify-center text-white"><Loader2 className="animate-spin text-purple-500" size={40} /></div>;
 
   return (
     <div className="min-h-screen bg-[#0F0F1A] text-white font-sans pb-32 md:pb-0">
@@ -127,7 +157,7 @@ export default function Dashboard() {
       <header className="md:hidden fixed top-0 w-full z-40 bg-[#0F0F1A]/90 backdrop-blur-xl border-b border-white/5 pt-10 pb-4 px-6 flex justify-between items-center">
         <h1 className="text-xl font-black tracking-tighter">FICAM <span className="text-purple-500">2026</span></h1>
         <div className="flex gap-3">
-            <button onClick={fetchData} className={`w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-slate-400 active:scale-95 ${refreshing ? 'animate-spin' : ''}`}><RefreshCw size={18} /></button>
+            <button onClick={() => fetchData(true)} className={`w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-slate-400 active:scale-95 transition-all ${refreshing ? 'animate-spin text-purple-400' : ''}`}><RefreshCw size={18} /></button>
             <button onClick={() => setShowProfile(true)} className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20"><User size={18} /></button>
         </div>
       </header>
@@ -171,7 +201,7 @@ export default function Dashboard() {
                 <h2 className="text-3xl font-bold">Bonjour, {user?.name || "Participant"} 👋</h2>
                 <p className="text-slate-400 mt-1">Voici ta progression pour le FICAM.</p>
             </div>
-            <button onClick={fetchData} className="flex items-center gap-2 px-4 py-2 bg-white/5 rounded-lg text-sm font-bold hover:bg-white/10 transition-colors">
+            <button onClick={() => fetchData(true)} className="flex items-center gap-2 px-4 py-2 bg-white/5 rounded-lg text-sm font-bold hover:bg-white/10 transition-colors">
                 <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} /> Actualiser
             </button>
         </div>
@@ -191,7 +221,7 @@ export default function Dashboard() {
                             <span className="text-slate-400">/ {mandatoryTotal}</span>
                         </div>
                         <div className="w-full bg-black/40 h-2 rounded-full overflow-hidden">
-                            <div className="h-full bg-purple-500 transition-all duration-1000" style={{ width: `${mandatoryPercent}%` }}></div>
+                            <div className="h-full bg-purple-500 transition-all duration-1000 ease-out" style={{ width: `${mandatoryPercent}%` }}></div>
                         </div>
                     </div>
                 </div>
@@ -202,10 +232,10 @@ export default function Dashboard() {
                         <h3 className="text-slate-500 font-bold uppercase text-[10px] tracking-wider mb-2">Total</h3>
                         <div className="text-2xl font-bold mb-2">{totalDone} <span className="text-sm text-slate-500">/ {totalActs}</span></div>
                         <div className="w-full bg-black/40 h-1.5 rounded-full overflow-hidden">
-                            <div className="h-full bg-green-500 transition-all duration-1000" style={{ width: `${totalPercent}%` }}></div>
+                            <div className="h-full bg-green-500 transition-all duration-1000 ease-out" style={{ width: `${totalPercent}%` }}></div>
                         </div>
                     </div>
-                    <button disabled={mandatoryDone < 13} className={`flex-1 rounded-3xl p-5 border flex flex-col items-center justify-center text-center transition-all shadow-lg ${mandatoryDone >= 13 ? 'bg-yellow-500/10 border-yellow-500/50 text-yellow-400' : 'bg-[#1A1A24] border-white/5 text-slate-600 grayscale'}`}>
+                    <button disabled={mandatoryDone < 13} className={`flex-1 rounded-3xl p-5 border flex flex-col items-center justify-center text-center transition-all shadow-lg ${mandatoryDone >= 13 ? 'bg-yellow-500/10 border-yellow-500/50 text-yellow-400 hover:scale-105' : 'bg-[#1A1A24] border-white/5 text-slate-600 grayscale opacity-50'}`}>
                         <Trophy size={24} className="mb-2" />
                         <span className="font-bold text-xs uppercase">Attestation</span>
                     </button>
@@ -227,8 +257,8 @@ export default function Dashboard() {
                     {activities.map((act) => {
                         const isDone = myDoneIds.includes(act.id);
                         return (
-                            <div key={act.id} className={`p-4 rounded-2xl border flex items-center gap-4 transition-all ${isDone ? 'bg-green-900/10 border-green-500/20' : 'bg-[#1A1A24] border-white/5 hover:bg-white/5'}`}>
-                                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${isDone ? 'bg-green-500 text-black' : (act.is_obligatory ? 'bg-purple-500/20 text-purple-400' : 'bg-white/10 text-slate-400')}`}>
+                            <div key={act.id} className={`p-4 rounded-2xl border flex items-center gap-4 transition-all duration-300 ${isDone ? 'bg-green-900/10 border-green-500/20' : 'bg-[#1A1A24] border-white/5 hover:bg-white/5 hover:border-white/10'}`}>
+                                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-colors ${isDone ? 'bg-green-500 text-black scale-110' : (act.is_obligatory ? 'bg-purple-500/20 text-purple-400' : 'bg-white/10 text-slate-400')}`}>
                                     {isDone ? <CheckCircle2 size={20} /> : (act.icon === 'Star' ? <Star size={18} /> : <ScanLine size={18} />)}
                                 </div>
                                 <div className="flex-1 min-w-0">
@@ -250,9 +280,9 @@ export default function Dashboard() {
           MOBILE BOTTOM NAV (Hidden >= 768px)
       ======================== */}
       <nav className="md:hidden fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-md bg-[#1A1A24]/90 backdrop-blur-xl border border-white/10 rounded-full p-2 flex justify-between items-center shadow-2xl z-50">
-        <button onClick={() => window.scrollTo({top:0, behavior:'smooth'})} className="w-12 h-12 rounded-full flex items-center justify-center text-white"><Home size={20} /></button>
-        <button onClick={() => setIsScanning(true)} className="w-14 h-14 bg-purple-600 rounded-full flex items-center justify-center -mt-8 border-4 border-[#0F0F1A] shadow-lg shadow-purple-500/40 hover:scale-105 transition-transform"><ScanLine size={24} /></button>
-        <button onClick={() => setShowProfile(true)} className="w-12 h-12 rounded-full flex items-center justify-center text-slate-400"><User size={20} /></button>
+        <button onClick={() => window.scrollTo({top:0, behavior:'smooth'})} className="w-12 h-12 rounded-full flex items-center justify-center text-white active:bg-white/10"><Home size={20} /></button>
+        <button onClick={() => setIsScanning(true)} className="w-14 h-14 bg-purple-600 rounded-full flex items-center justify-center -mt-8 border-4 border-[#0F0F1A] shadow-lg shadow-purple-500/40 hover:scale-105 active:scale-95 transition-transform"><ScanLine size={24} /></button>
+        <button onClick={() => setShowProfile(true)} className="w-12 h-12 rounded-full flex items-center justify-center text-slate-400 active:bg-white/10"><User size={20} /></button>
       </nav>
 
       {/* =======================
@@ -260,19 +290,19 @@ export default function Dashboard() {
       ======================== */}
       {/* 1. PROFILE MODAL */}
       {showProfile && (
-       <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6">
+       <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-200">
            <div className="absolute inset-0" onClick={() => setShowProfile(false)}></div>
-           <div className="bg-[#1A1A24] border border-white/10 w-full max-w-sm rounded-3xl p-6 relative z-10 shadow-2xl animate-in zoom-in-95">
+           <div className="bg-[#1A1A24] border border-white/10 w-full max-w-sm rounded-3xl p-6 relative z-10 shadow-2xl animate-in zoom-in-95 duration-200">
                <button onClick={() => setShowProfile(false)} className="absolute top-4 right-4 text-slate-400 hover:text-white"><XCircle size={24} /></button>
                <div className="flex flex-col items-center mb-6 pt-4">
-                   <div className="w-20 h-20 rounded-full bg-purple-600 flex items-center justify-center mb-4 text-white"><User size={32} /></div>
+                   <div className="w-20 h-20 rounded-full bg-purple-600 flex items-center justify-center mb-4 text-white shadow-lg shadow-purple-600/30"><User size={32} /></div>
                    <h2 className="text-2xl font-bold text-center">{user?.name || "Participant"}</h2>
                    <p className="text-slate-400 text-sm mb-1">{user?.email}</p>
-                   <span className="px-3 py-1 bg-white/10 rounded-full text-xs font-bold uppercase text-slate-300">{user?.role || "Étudiant"}</span>
+                   <span className="px-3 py-1 bg-white/10 rounded-full text-xs font-bold uppercase text-slate-300 mt-2">{user?.role || "Étudiant"}</span>
                </div>
                <div className="space-y-3">
                    {user?.role === 'admin' && (
-                     <button onClick={() => router.push('/admin')} className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-colors"><ShieldAlert size={18} /> Panel Admin</button>
+                     <button onClick={() => router.push('/admin')} className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-colors"><ShieldAlert size={18} /> Panel Admin</button>
                    )}
                    <button onClick={handleLogout} className="w-full py-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 font-bold rounded-xl flex items-center justify-center gap-2 transition-colors"><LogOut size={18} /> Déconnexion</button>
                </div>
@@ -282,54 +312,92 @@ export default function Dashboard() {
 
       {/* 2. SCANNER VIEW */}
       {isScanning && (
-        <div className="fixed inset-0 z-[60] bg-black flex flex-col items-center justify-center p-4">
-             <div className="w-full max-w-md aspect-square relative rounded-3xl overflow-hidden border-2 border-white/20 bg-black">
-                <Scanner onScan={handleScan} components={{ audio: false, finder: false }} styles={{ container: { width: '100%', height: '100%' } }} />
+        <div className="fixed inset-0 z-[60] bg-black flex flex-col items-center justify-center p-4 animate-in fade-in">
+             <div className="w-full max-w-md aspect-square relative rounded-3xl overflow-hidden border-2 border-white/20 bg-black shadow-2xl">
+                <Scanner 
+                    onScan={handleScan} 
+                    components={{ audio: false, finder: false }} 
+                    styles={{ container: { width: '100%', height: '100%' } }} 
+                />
+                {/* Custom Finder Overlay */}
+                <div className="absolute inset-0 border-[50px] border-black/50 pointer-events-none flex items-center justify-center">
+                    <div className="w-full h-full border-2 border-purple-500/50 relative">
+                        <div className="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-purple-500"></div>
+                        <div className="absolute top-0 right-0 w-4 h-4 border-t-4 border-r-4 border-purple-500"></div>
+                        <div className="absolute bottom-0 left-0 w-4 h-4 border-b-4 border-l-4 border-purple-500"></div>
+                        <div className="absolute bottom-0 right-0 w-4 h-4 border-b-4 border-r-4 border-purple-500"></div>
+                    </div>
+                </div>
             </div>
-            <p className="mt-4 text-slate-400 text-sm">Visez le QR Code de l'activité</p>
-            <button onClick={() => setIsScanning(false)} className="mt-6 bg-white/10 px-8 py-3 rounded-full text-white font-bold">Fermer</button>
+            <p className="mt-8 text-slate-400 text-sm font-medium animate-pulse">Visez le QR Code de l'activité</p>
+            <button onClick={() => setIsScanning(false)} className="mt-8 bg-white/10 hover:bg-white/20 px-8 py-3 rounded-full text-white font-bold transition-colors">Fermer</button>
         </div>
       )}
 
       {/* 3. Q&A MODAL */}
       {showQaModal && (
-        <div className="fixed inset-0 z-[80] bg-black/90 backdrop-blur-md flex items-center justify-center p-6 animate-in zoom-in-95">
+        <div className="fixed inset-0 z-[80] bg-black/90 backdrop-blur-md flex items-center justify-center p-6 animate-in zoom-in-95 duration-200">
             <div className="bg-[#1A1A24] border border-white/10 w-full max-w-sm rounded-3xl p-6 flex flex-col relative shadow-2xl">
-                {(!currentActivity || scanFeedback?.type === 'warning') && (
-                     <div className="text-center py-4">
-                        <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4 ${scanFeedback?.type === 'success' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
-                            {scanFeedback?.type === 'success' ? <CheckCircle2 size={32} /> : <XCircle size={32} />}
-                        </div>
-                        <p className="text-lg font-bold mb-6">{scanFeedback?.msg || "Erreur"}</p>
-                        <button onClick={() => { setShowQaModal(false); setCurrentActivity(null); setScanFeedback(null); }} className="w-full py-3 bg-white text-black font-bold rounded-xl">Fermer</button>
-                     </div>
+                
+                {/* Case 1: Error or Warning Feedback */}
+                {(!currentActivity || scanFeedback?.type === 'warning' || (scanFeedback?.type === 'error' && !currentActivity)) && (
+                      <div className="text-center py-4">
+                         <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4 ${scanFeedback?.type === 'success' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                             {scanFeedback?.type === 'success' ? <CheckCircle2 size={32} /> : <XCircle size={32} />}
+                         </div>
+                         <p className="text-lg font-bold mb-6">{scanFeedback?.msg || "Erreur"}</p>
+                         <button onClick={() => { setShowQaModal(false); setCurrentActivity(null); setScanFeedback(null); }} className="w-full py-3 bg-white hover:bg-slate-200 text-black font-bold rounded-xl transition-colors">Fermer</button>
+                      </div>
                 )}
+
+                {/* Case 2: Validation Question (Input) */}
                 {currentActivity && (!scanFeedback || scanFeedback.type === 'error') && scanFeedback?.type !== 'warning' && (
                     <>
                         <div className="text-center mb-6">
                             <h3 className="text-purple-400 font-bold uppercase text-xs tracking-widest mb-2">Validation</h3>
                             <h2 className="text-2xl font-bold leading-tight">{currentActivity.title}</h2>
                         </div>
-                        <div className="bg-purple-500/10 border border-purple-500/20 p-4 rounded-xl mb-6">
-                            <div className="flex gap-3">
-                                <HelpCircle className="text-purple-400 shrink-0" size={24} />
-                                <p className="font-medium text-sm text-purple-100">{currentActivity.question_text || "Confirmez votre présence :"}</p>
-                            </div>
+                        
+                        <div className="bg-purple-500/10 border border-purple-500/20 p-4 rounded-xl mb-6 flex gap-3 items-start">
+                             <HelpCircle className="text-purple-400 shrink-0 mt-0.5" size={20} />
+                             <p className="font-medium text-sm text-purple-100">{currentActivity.question_text || "Pour valider, confirmez votre présence :"}</p>
                         </div>
-                        <input type="text" placeholder="Votre réponse..." className="w-full bg-black/30 border border-white/10 rounded-xl p-4 text-white mb-4 focus:border-purple-500 outline-none" value={userAnswer} onChange={(e) => setUserAnswer(e.target.value)} />
-                        {scanFeedback?.type === 'error' && <p className="text-red-400 text-sm font-bold text-center mb-4">{scanFeedback.msg}</p>}
+                        
+                        <input 
+                            type="text" 
+                            placeholder="Votre réponse..." 
+                            autoFocus
+                            className="w-full bg-black/30 border border-white/10 rounded-xl p-4 text-white mb-2 focus:border-purple-500 focus:bg-black/50 outline-none transition-all" 
+                            value={userAnswer} 
+                            onChange={(e) => setUserAnswer(e.target.value)} 
+                            onKeyDown={(e) => e.key === 'Enter' && submitAnswer()}
+                        />
+                        
+                        {/* Inline Error Message */}
+                        <div className="h-6 mb-2">
+                             {scanFeedback?.type === 'error' && <p className="text-red-400 text-xs font-bold text-center animate-pulse">{scanFeedback.msg}</p>}
+                        </div>
+
                         <div className="flex gap-3">
-                            <button onClick={() => setShowQaModal(false)} className="flex-1 py-3 bg-white/5 text-slate-400 font-bold rounded-xl">Annuler</button>
-                            <button onClick={submitAnswer} className="flex-1 py-3 bg-purple-600 text-white font-bold rounded-xl shadow-lg shadow-purple-600/20">Valider</button>
+                            <button onClick={() => setShowQaModal(false)} className="flex-1 py-3 bg-white/5 hover:bg-white/10 text-slate-400 font-bold rounded-xl transition-colors">Annuler</button>
+                            <button 
+                                onClick={submitAnswer} 
+                                disabled={isSubmitting || !userAnswer.trim()}
+                                className="flex-1 py-3 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-purple-600/20 flex items-center justify-center gap-2 transition-all"
+                            >
+                                {isSubmitting ? <Loader2 className="animate-spin" size={18}/> : "Valider"}
+                            </button>
                         </div>
                     </>
                 )}
+
+                {/* Case 3: Success Message */}
                 {scanFeedback?.type === 'success' && (
-                     <div className="text-center py-6">
-                        <div className="mx-auto w-20 h-20 rounded-full bg-green-500 flex items-center justify-center mb-4 text-black shadow-lg shadow-green-500/40"><CheckCircle2 size={40} /></div>
-                        <h2 className="text-2xl font-bold mb-2">Validé !</h2>
-                        <p className="text-slate-400">Activité enregistrée avec succès.</p>
-                     </div>
+                      <div className="text-center py-6 animate-in zoom-in-50">
+                         <div className="mx-auto w-20 h-20 rounded-full bg-green-500 flex items-center justify-center mb-4 text-black shadow-lg shadow-green-500/40"><CheckCircle2 size={40} /></div>
+                         <h2 className="text-2xl font-bold mb-2">Validé !</h2>
+                         <p className="text-slate-400">Activité enregistrée avec succès.</p>
+                      </div>
                 )}
             </div>
         </div>
