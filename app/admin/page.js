@@ -163,6 +163,36 @@ export default function AdminDashboard() {
     else fetchActivities();
   };
 
+  // --- EXPORT EXCEL FUNCTION (NOUVEAU) ---
+  const handleExportExcel = () => {
+    // 1. En-têtes (séparateur point-virgule pour Excel France)
+    const headers = ["Email;Total Badges;Activités Validées;Date Inscription"];
+    
+    // 2. Données
+    const rows = allUsers.map(user => {
+      const activityNames = user.scans
+        ? user.scans.map(s => s.activities ? s.activities.title : '(Supprimé)').join(' + ')
+        : 'Aucune';
+      
+      const dateInscription = user.created_at ? new Date(user.created_at).toLocaleDateString() : 'N/A';
+      
+      return `${user.email};${user.scans?.length || 0};${activityNames};${dateInscription}`;
+    });
+
+    // 3. Création du Blob (avec BOM \uFEFF pour les accents)
+    const csvContent = "\uFEFF" + [headers, ...rows].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    
+    // 4. Téléchargement
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `export_utilisateurs_${new Date().toLocaleDateString().replace(/\//g, '-')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   // Helper Functions
   const getName = (email) => email ? email.split('@')[0] : 'Inconnu';
   
@@ -214,7 +244,7 @@ export default function AdminDashboard() {
             </div>
             <div>
                 <div className="font-bold text-lg">Admin OS</div>
-                <div className="text-[10px] text-blue-500/80 font-mono tracking-widest">v3.1 DB</div>
+                <div className="text-[10px] text-blue-500/80 font-mono tracking-widest">v3.2 Excel</div>
             </div>
         </div>
 
@@ -251,16 +281,26 @@ export default function AdminDashboard() {
                         <p className="text-slate-400 text-sm">Suivi des présences et des badges obtenus.</p>
                     </div>
                     
-                    {/* ✅ Search Bar */}
-                    <div className="relative">
-                        <input 
-                            type="text" 
-                            placeholder="Rechercher un utilisateur..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="bg-[#1a1a24] border border-white/10 rounded-lg py-2 pl-10 pr-4 text-sm text-white focus:border-blue-500 outline-none w-full md:w-64"
-                        />
-                        <Search size={16} className="absolute left-3 top-2.5 text-slate-500" />
+                    <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
+                        {/* ✅ EXPORT EXCEL BUTTON (NOUVEAU) */}
+                        <button 
+                            onClick={handleExportExcel}
+                            className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2 font-bold transition-all text-sm h-[42px]"
+                        >
+                            <Download size={18} /> Excel
+                        </button>
+
+                        {/* ✅ Search Bar */}
+                        <div className="relative">
+                            <input 
+                                type="text" 
+                                placeholder="Rechercher..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="bg-[#1a1a24] border border-white/10 rounded-lg py-2 pl-10 pr-4 text-sm text-white focus:border-blue-500 outline-none w-full md:w-64 h-[42px]"
+                            />
+                            <Search size={16} className="absolute left-3 top-3 text-slate-500" />
+                        </div>
                     </div>
                 </header>
 
