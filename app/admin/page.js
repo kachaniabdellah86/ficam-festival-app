@@ -1,9 +1,8 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-// ✅ NEW: Added 'Download' icon to imports (already there, but ensuring it is used)
-import { Shield, Users, LayoutGrid, QrCode, Trash2, Plus, Download, Medal } from 'lucide-react';
-// ✅ NEW: Changed QRCodeSVG to QRCodeCanvas (easier to download)
+// ✅ ADDED: Eye, X, Clock, Calendar icons
+import { Shield, Users, LayoutGrid, QrCode, Trash2, Plus, Download, Medal, Eye, X, Clock, Calendar } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { generateCertificate } from '@/app/utils/generatePdf';
 import { createClient } from '@supabase/supabase-js';
@@ -19,6 +18,9 @@ export default function AdminDashboard() {
   const [admin, setAdmin] = useState(null);
   const [activeTab, setActiveTab] = useState('users');
   const [allUsers, setAllUsers] = useState([]);
+
+  // ✅ NEW: State for the specific student we are inspecting
+  const [selectedUser, setSelectedUser] = useState(null);
   
   // --- Activities State ---
   const [activities, setActivities] = useState([]);
@@ -63,7 +65,8 @@ export default function AdminDashboard() {
             activities (
               id,
               title,
-              type
+              type,
+              description
             )
           )
         `)
@@ -90,7 +93,6 @@ export default function AdminDashboard() {
   };
 
   // --- ACTIONS ---
-  // ✅ NEW: Function to download the QR Code
   const downloadQR = (activity) => {
     const canvas = document.getElementById(`qr-canvas-${activity.id}`);
     if (canvas) {
@@ -179,7 +181,7 @@ export default function AdminDashboard() {
   if (!admin) return null;
 
   return (
-    <div className="min-h-screen bg-[#0a0a12] text-white font-sans flex flex-col md:flex-row">
+    <div className="min-h-screen bg-[#0a0a12] text-white font-sans flex flex-col md:flex-row relative">
       
       {/* 🔵 SIDEBAR */}
       <aside className="w-full md:w-64 bg-[#11111a] border-b md:border-b-0 md:border-r border-white/5 flex flex-col p-4 md:p-6">
@@ -231,7 +233,7 @@ export default function AdminDashboard() {
                             <tr>
                                 <th className="p-4 w-1/4">Utilisateur</th>
                                 <th className="p-4 w-1/2">Badges Validés</th>
-                                <th className="p-4 w-1/4 text-right">Actions</th>
+                                <th className="p-4 w-1/4 text-right">Détails</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-white/5 text-sm">
@@ -256,11 +258,12 @@ export default function AdminDashboard() {
                                         </td>
 
                                         <td className="p-4 text-right">
-                                            <button
-                                                onClick={() => generateCertificate(getName(u.email), new Date().toLocaleDateString())}
-                                                className="ml-auto bg-blue-600/20 text-blue-400 border border-blue-600/50 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-600 hover:text-white transition-all flex items-center gap-2 w-fit"
+                                            {/* ✅ NEW: Eye Button to open Inspector */}
+                                            <button 
+                                                onClick={() => setSelectedUser(u)}
+                                                className="bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white p-2 rounded-lg transition-colors"
                                             >
-                                                <Download size={14} /> Attestation
+                                                <Eye size={18} />
                                             </button>
                                         </td>
                                     </tr>
@@ -368,7 +371,6 @@ export default function AdminDashboard() {
                         {activities.map((act) => (
                             <div key={act.id} className="bg-[#11111a] p-4 rounded-2xl border border-white/5 flex items-center gap-6 group hover:border-white/10 transition-all">
                                 
-                                {/* ✅ NEW: Using QRCodeCanvas so we can download it */}
                                 <div className="bg-white p-2 rounded-lg shrink-0 flex items-center justify-center">
                                     <QRCodeCanvas 
                                         id={`qr-canvas-${act.id}`} 
@@ -399,7 +401,6 @@ export default function AdminDashboard() {
                                     </span>
                                 </div>
                                 
-                                {/* ✅ NEW: Download Button */}
                                 <div className="flex flex-col gap-2">
                                     <button 
                                         onClick={() => downloadQR(act)}
@@ -425,6 +426,91 @@ export default function AdminDashboard() {
         )}
 
       </main>
+
+      {/* ✅✅✅ MODAL: STUDENT INSPECTOR ✅✅✅ */}
+      {selectedUser && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-[#1a1a24] w-full max-w-2xl rounded-2xl border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                
+                {/* Header */}
+                <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/5">
+                    <div>
+                        <h2 className="text-2xl font-bold text-white">{getName(selectedUser.email)}</h2>
+                        <p className="text-slate-400 text-xs font-mono">{selectedUser.email}</p>
+                    </div>
+                    <button 
+                        onClick={() => setSelectedUser(null)}
+                        className="p-2 hover:bg-white/10 rounded-full transition-colors text-slate-400 hover:text-white"
+                    >
+                        <X size={24} />
+                    </button>
+                </div>
+
+                {/* Content */}
+                <div className="p-6 overflow-y-auto">
+                    
+                    {/* Stats & Certificate */}
+                    <div className="grid grid-cols-2 gap-4 mb-8">
+                        <div className="bg-blue-500/10 border border-blue-500/20 p-4 rounded-xl text-center">
+                            <div className="text-3xl font-bold text-blue-400 mb-1">
+                                {selectedUser.scans ? selectedUser.scans.length : 0}
+                            </div>
+                            <div className="text-[10px] uppercase text-slate-400 font-bold tracking-wider">Activités Validées</div>
+                        </div>
+                        <button
+                            onClick={() => generateCertificate(getName(selectedUser.email), new Date().toLocaleDateString())}
+                            className="bg-green-600/10 border border-green-500/20 hover:bg-green-600/20 hover:text-green-400 text-green-500 p-4 rounded-xl flex flex-col items-center justify-center transition-all gap-2"
+                        >
+                            <Download size={24} />
+                            <span className="text-xs font-bold uppercase">Attestation PDF</span>
+                        </button>
+                    </div>
+
+                    {/* Timeline */}
+                    <h3 className="font-bold text-lg mb-4 flex items-center gap-2 text-white">
+                        <Clock size={18} className="text-purple-400"/> Historique d'activité
+                    </h3>
+
+                    <div className="space-y-0 relative border-l border-white/10 ml-2 pl-6 pb-2">
+                        {(!selectedUser.scans || selectedUser.scans.length === 0) ? (
+                            <div className="text-slate-500 italic py-4">Aucune activité enregistrée.</div>
+                        ) : (
+                            selectedUser.scans
+                            .sort((a, b) => new Date(b.created_at) - new Date(a.created_at)) // Sort: Newest first
+                            .map((scan, index) => {
+                                const activityTitle = scan.activities ? scan.activities.title : 'Activité inconnue';
+                                const activityType = scan.activities ? scan.activities.type : '';
+                                const dateObj = new Date(scan.created_at);
+                                
+                                return (
+                                    <div key={index} className="relative mb-6 last:mb-0">
+                                        {/* Dot on timeline */}
+                                        <div className={`absolute -left-[31px] top-1 w-4 h-4 rounded-full border-2 ${activityType === 'matin' ? 'bg-yellow-500 border-[#1a1a24]' : 'bg-purple-500 border-[#1a1a24]'}`}></div>
+                                        
+                                        <div className="bg-white/5 p-4 rounded-xl border border-white/5 hover:bg-white/10 transition-colors">
+                                            <div className="flex justify-between items-start mb-1">
+                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${activityType === 'matin' ? 'bg-yellow-500/20 text-yellow-500' : 'bg-purple-500/20 text-purple-400'}`}>
+                                                    {activityType === 'matin' ? 'Atelier' : 'Film'}
+                                                </span>
+                                                <span className="text-xs text-slate-500 font-mono flex items-center gap-1">
+                                                    {dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                                    <Calendar size={10} />
+                                                    {dateObj.toLocaleDateString()}
+                                                </span>
+                                            </div>
+                                            <div className="font-bold text-white text-lg">{activityTitle}</div>
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+
+                </div>
+            </div>
+        </div>
+      )}
+
     </div>
   );
 }
