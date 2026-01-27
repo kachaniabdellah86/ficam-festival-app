@@ -1,8 +1,10 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+// ✅ NEW: Added 'Download' icon to imports (already there, but ensuring it is used)
 import { Shield, Users, LayoutGrid, QrCode, Trash2, Plus, Download, Medal } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
+// ✅ NEW: Changed QRCodeSVG to QRCodeCanvas (easier to download)
+import { QRCodeCanvas } from 'qrcode.react';
 import { generateCertificate } from '@/app/utils/generatePdf';
 import { createClient } from '@supabase/supabase-js';
 
@@ -52,7 +54,6 @@ export default function AdminDashboard() {
   // --- FETCHERS ---
   const fetchUsers = async () => {
     try {
-      // ✅ MODIF ICI : On récupère les users AVEC leurs scans et les détails de l'activité
       const { data, error } = await supabase
         .from('users')
         .select(`
@@ -89,6 +90,22 @@ export default function AdminDashboard() {
   };
 
   // --- ACTIONS ---
+  // ✅ NEW: Function to download the QR Code
+  const downloadQR = (activity) => {
+    const canvas = document.getElementById(`qr-canvas-${activity.id}`);
+    if (canvas) {
+        const pngUrl = canvas.toDataURL("image/png");
+        const downloadLink = document.createElement("a");
+        downloadLink.href = pngUrl;
+        downloadLink.download = `QR_${activity.title.replace(/\s+/g, '_')}.png`;
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+    } else {
+        alert("Erreur: Impossible de générer l'image.");
+    }
+  };
+
   const handleAddActivity = async () => {
     if (!newActivity.title || !newActivity.qr_code) return alert("Titre et Code QR requis !");
     if (!newActivity.question_text || !newActivity.correct_answer) return alert("Question et Réponse requises !");
@@ -130,7 +147,6 @@ export default function AdminDashboard() {
 
   const getName = (email) => email ? email.split('@')[0] : 'Inconnu';
 
-  // ✅ MODIF : Nouvelle fonction pour afficher les vrais badges
   const renderBadges = (user) => {
     if (!user.scans || user.scans.length === 0) {
         return (
@@ -143,9 +159,7 @@ export default function AdminDashboard() {
     return (
         <div className="flex flex-wrap gap-2">
             {user.scans.map((scan, index) => {
-                // Protection si l'activité a été supprimée entre temps
                 if (!scan.activities) return null;
-
                 const isMatin = scan.activities.type === 'matin';
                 return (
                     <span key={index} className={`
@@ -237,7 +251,6 @@ export default function AdminDashboard() {
                                             <span className="font-medium text-white">{getName(u.email)}</span>
                                         </td>
                                         
-                                        {/* ✅ MODIF : APPEL DE LA FONCTION RENDER BADGES */}
                                         <td className="p-4">
                                             {renderBadges(u)}
                                         </td>
@@ -354,9 +367,18 @@ export default function AdminDashboard() {
                         )}
                         {activities.map((act) => (
                             <div key={act.id} className="bg-[#11111a] p-4 rounded-2xl border border-white/5 flex items-center gap-6 group hover:border-white/10 transition-all">
-                                <div className="bg-white p-2 rounded-lg shrink-0">
-                                    <QRCodeSVG value={act.qr_code} size={80} />
+                                
+                                {/* ✅ NEW: Using QRCodeCanvas so we can download it */}
+                                <div className="bg-white p-2 rounded-lg shrink-0 flex items-center justify-center">
+                                    <QRCodeCanvas 
+                                        id={`qr-canvas-${act.id}`} 
+                                        value={act.qr_code} 
+                                        size={80}
+                                        level={"H"} // High Error Correction
+                                        includeMargin={true}
+                                    />
                                 </div>
+
                                 <div className="flex-1">
                                     <div className="flex justify-between items-start">
                                         <h3 className="font-bold text-lg">{act.title}</h3>
@@ -376,12 +398,25 @@ export default function AdminDashboard() {
                                         QR: {act.qr_code}
                                     </span>
                                 </div>
-                                <button 
-                                    onClick={() => handleDeleteActivity(act.id)}
-                                    className="p-3 text-slate-600 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
-                                >
-                                    <Trash2 size={20} />
-                                </button>
+                                
+                                {/* ✅ NEW: Download Button */}
+                                <div className="flex flex-col gap-2">
+                                    <button 
+                                        onClick={() => downloadQR(act)}
+                                        className="p-3 text-slate-600 hover:text-blue-500 hover:bg-blue-500/10 rounded-lg transition-colors"
+                                        title="Télécharger QR"
+                                    >
+                                        <Download size={20} />
+                                    </button>
+                                    <button 
+                                        onClick={() => handleDeleteActivity(act.id)}
+                                        className="p-3 text-slate-600 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
+                                        title="Supprimer"
+                                    >
+                                        <Trash2 size={20} />
+                                    </button>
+                                </div>
+
                             </div>
                         ))}
                     </div>
