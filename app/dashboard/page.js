@@ -24,7 +24,7 @@ export default function Dashboard() {
   // UI STATES
   const [isScanning, setIsScanning] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false); // NEW: To prevent double clicks
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   // Q&A MODAL STATES
   const [showQaModal, setShowQaModal] = useState(false);
@@ -32,7 +32,7 @@ export default function Dashboard() {
   const [userAnswer, setUserAnswer] = useState('');
   const [scanFeedback, setScanFeedback] = useState(null); 
 
-  // --- 1. FETCH DATA ---
+  // --- 1. SETUP & FETCH ---
   const fetchData = useCallback(async (isRefresh = false) => {
     try {
       if (isRefresh) setRefreshing(true);
@@ -40,7 +40,7 @@ export default function Dashboard() {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) { router.push('/login'); return; }
 
-      // Get detailed user profile (for role)
+      // Get detailed user profile
       const { data: dbUser } = await supabase.from('users').select('*').eq('id', authUser.id).single();
       setUser(dbUser || authUser);
 
@@ -61,7 +61,11 @@ export default function Dashboard() {
     }
   }, [router]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { 
+      // FIX: Force browser body background to match app to prevent white flashes
+      document.body.style.backgroundColor = "#0F0F1A";
+      fetchData(); 
+  }, [fetchData]);
 
   // --- 2. CALCULATE PROGRESS ---
   const myDoneIds = myHistory.map(h => h.activity_id);
@@ -78,7 +82,6 @@ export default function Dashboard() {
   const handleScan = (result) => {
     if (!result || !result[0]) return;
     
-    // Stop scanning immediately to prevent duplicate triggers
     setIsScanning(false); 
     const code = result[0].rawValue;
 
@@ -107,7 +110,7 @@ export default function Dashboard() {
 
   const submitAnswer = async () => {
     if (!userAnswer.trim()) return;
-    setIsSubmitting(true); // Lock button
+    setIsSubmitting(true);
 
     try {
         const { data, error } = await supabase.rpc('attempt_scan', { 
@@ -119,16 +122,13 @@ export default function Dashboard() {
         if (error) throw error;
 
         if (data && data.success) {
-            // Optimistic Update: Add to local history immediately for snappy UI
             setMyHistory(prev => [...prev, { activity_id: currentActivity.id, is_correct: true }]);
-            
             setScanFeedback({ type: 'success', msg: data.msg });
             
-            // Close modal after delay and refresh in background
             setTimeout(async () => { 
                 setShowQaModal(false); 
                 setCurrentActivity(null); 
-                await fetchData(false); // Silent refresh
+                await fetchData(false); 
             }, 1500);
         } else {
             setScanFeedback({ type: 'error', msg: data?.msg || "Mauvaise réponse" }); 
@@ -146,15 +146,17 @@ export default function Dashboard() {
     router.push('/login');
   };
 
-  if (loading) return <div className="min-h-screen bg-[#0F0F1A] flex items-center justify-center text-white"><Loader2 className="animate-spin text-purple-500" size={40} /></div>;
+  if (loading) return <div className="fixed inset-0 bg-[#0F0F1A] flex items-center justify-center text-white"><Loader2 className="animate-spin text-purple-500" size={40} /></div>;
 
   return (
-    <div className="min-h-screen bg-[#0F0F1A] text-white font-sans pb-32 md:pb-0">
+    // FIX: Main container is fixed to viewport height (100dvh) and hidden overflow
+    <div className="fixed inset-0 h-[100dvh] bg-[#0F0F1A] text-white font-sans overflow-hidden flex flex-col md:flex-row">
       
       {/* =======================
           MOBILE HEADER (Visible < 768px)
       ======================== */}
-      <header className="md:hidden fixed top-0 w-full z-40 bg-[#0F0F1A]/90 backdrop-blur-xl border-b border-white/5 pt-10 pb-4 px-6 flex justify-between items-center">
+      {/* Absolute positioning keeps it at the top of the viewport */}
+      <header className="md:hidden absolute top-0 left-0 w-full z-40 bg-[#0F0F1A]/90 backdrop-blur-xl border-b border-white/5 pt-10 pb-4 px-6 flex justify-between items-center">
         <h1 className="text-xl font-black tracking-tighter">FICAM <span className="text-purple-500">2026</span></h1>
         <div className="flex gap-3">
             <button onClick={() => fetchData(true)} className={`w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-slate-400 active:scale-95 transition-all ${refreshing ? 'animate-spin text-purple-400' : ''}`}><RefreshCw size={18} /></button>
@@ -165,14 +167,14 @@ export default function Dashboard() {
       {/* =======================
           DESKTOP SIDEBAR (Visible >= 768px)
       ======================== */}
-      <aside className="hidden md:flex flex-col w-72 fixed h-full left-0 top-0 bg-[#15151e] border-r border-white/5 p-6 z-50">
+      <aside className="hidden md:flex flex-col w-72 bg-[#15151e] border-r border-white/5 p-6 z-50 shrink-0 h-full">
           <div className="mb-10 pt-4">
              <h1 className="text-2xl font-black tracking-tighter">FICAM <span className="text-purple-500">2026</span></h1>
              <p className="text-slate-500 text-xs mt-1">Espace Étudiant</p>
           </div>
 
           <nav className="space-y-2 flex-1">
-             <button onClick={() => window.scrollTo({top:0, behavior:'smooth'})} className="w-full flex items-center gap-3 p-3 bg-purple-600/10 text-purple-400 rounded-xl font-bold"><LayoutDashboard size={20}/> Tableau de bord</button>
+             <button className="w-full flex items-center gap-3 p-3 bg-purple-600/10 text-purple-400 rounded-xl font-bold"><LayoutDashboard size={20}/> Tableau de bord</button>
              <button onClick={() => setIsScanning(true)} className="w-full flex items-center gap-3 p-3 hover:bg-white/5 text-slate-400 rounded-xl font-bold transition-colors"><ScanLine size={20}/> Scanner un QR</button>
              <button onClick={() => setShowProfile(true)} className="w-full flex items-center gap-3 p-3 hover:bg-white/5 text-slate-400 rounded-xl font-bold transition-colors"><User size={20}/> Mon Profil</button>
           </nav>
@@ -190,10 +192,11 @@ export default function Dashboard() {
       </aside>
 
       {/* =======================
-          MAIN CONTENT AREA
+          MAIN CONTENT AREA (Scrollable)
       ======================== */}
-      {/* Note: md:pl-80 pushes content right to make room for sidebar on PC */}
-      <main className="pt-32 px-4 md:pt-10 md:pl-80 md:pr-10 max-w-lg md:max-w-none mx-auto space-y-8">
+      {/* FIX: overflow-y-auto is applied here. Content scrolls, header stays put. */}
+      <main className="flex-1 h-full overflow-y-auto overflow-x-hidden relative scroll-smooth bg-[#0F0F1A]">
+        <div className="pt-28 pb-32 px-4 md:pl-10 md:pr-10 md:pt-10 max-w-7xl mx-auto space-y-8">
         
         {/* DESKTOP WELCOME HEADER */}
         <div className="hidden md:flex justify-between items-end mb-8 border-b border-white/5 pb-6">
@@ -209,7 +212,7 @@ export default function Dashboard() {
         {/* RESPONSIVE GRID WRAPPER */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
             
-            {/* LEFT COLUMN: Progress (Stacked on Mobile, Side on PC) */}
+            {/* LEFT COLUMN: Progress */}
             <div className="xl:col-span-1 space-y-6">
                 {/* Mandatory Card */}
                 <div className="bg-gradient-to-br from-purple-900/40 to-[#1A1A24] border border-purple-500/30 rounded-3xl p-6 relative overflow-hidden shadow-xl">
@@ -242,7 +245,7 @@ export default function Dashboard() {
                 </div>
             </div>
 
-            {/* RIGHT COLUMN: Activities List (Grid on PC, List on Mobile) */}
+            {/* RIGHT COLUMN: Activities List */}
             <div className="xl:col-span-2">
                 <h3 className="font-bold text-sm uppercase text-slate-500 mb-4 flex gap-2"><ListTodo size={16}/> Activités</h3>
                 
@@ -274,20 +277,23 @@ export default function Dashboard() {
                 </div>
             </div>
         </div>
+        </div>
       </main>
 
       {/* =======================
           MOBILE BOTTOM NAV (Hidden >= 768px)
       ======================== */}
+      {/* Fixed positioning keeps it visible over the scrolling content */}
       <nav className="md:hidden fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-md bg-[#1A1A24]/90 backdrop-blur-xl border border-white/10 rounded-full p-2 flex justify-between items-center shadow-2xl z-50">
-        <button onClick={() => window.scrollTo({top:0, behavior:'smooth'})} className="w-12 h-12 rounded-full flex items-center justify-center text-white active:bg-white/10"><Home size={20} /></button>
+        <button onClick={() => { const main = document.querySelector('main'); if(main) main.scrollTo({top:0, behavior:'smooth'}); }} className="w-12 h-12 rounded-full flex items-center justify-center text-white active:bg-white/10"><Home size={20} /></button>
         <button onClick={() => setIsScanning(true)} className="w-14 h-14 bg-purple-600 rounded-full flex items-center justify-center -mt-8 border-4 border-[#0F0F1A] shadow-lg shadow-purple-500/40 hover:scale-105 active:scale-95 transition-transform"><ScanLine size={24} /></button>
         <button onClick={() => setShowProfile(true)} className="w-12 h-12 rounded-full flex items-center justify-center text-slate-400 active:bg-white/10"><User size={20} /></button>
       </nav>
 
       {/* =======================
-          MODALS (Scanner, Profile, Q&A)
+          MODALS
       ======================== */}
+      
       {/* 1. PROFILE MODAL */}
       {showProfile && (
        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-200">
@@ -319,7 +325,6 @@ export default function Dashboard() {
                     components={{ audio: false, finder: false }} 
                     styles={{ container: { width: '100%', height: '100%' } }} 
                 />
-                {/* Custom Finder Overlay */}
                 <div className="absolute inset-0 border-[50px] border-black/50 pointer-events-none flex items-center justify-center">
                     <div className="w-full h-full border-2 border-purple-500/50 relative">
                         <div className="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-purple-500"></div>
@@ -339,18 +344,18 @@ export default function Dashboard() {
         <div className="fixed inset-0 z-[80] bg-black/90 backdrop-blur-md flex items-center justify-center p-6 animate-in zoom-in-95 duration-200">
             <div className="bg-[#1A1A24] border border-white/10 w-full max-w-sm rounded-3xl p-6 flex flex-col relative shadow-2xl">
                 
-                {/* Case 1: Error or Warning Feedback */}
+                {/* Feedback Error/Warning */}
                 {(!currentActivity || scanFeedback?.type === 'warning' || (scanFeedback?.type === 'error' && !currentActivity)) && (
                       <div className="text-center py-4">
-                         <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4 ${scanFeedback?.type === 'success' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
-                             {scanFeedback?.type === 'success' ? <CheckCircle2 size={32} /> : <XCircle size={32} />}
-                         </div>
-                         <p className="text-lg font-bold mb-6">{scanFeedback?.msg || "Erreur"}</p>
-                         <button onClick={() => { setShowQaModal(false); setCurrentActivity(null); setScanFeedback(null); }} className="w-full py-3 bg-white hover:bg-slate-200 text-black font-bold rounded-xl transition-colors">Fermer</button>
+                          <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4 ${scanFeedback?.type === 'success' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                              {scanFeedback?.type === 'success' ? <CheckCircle2 size={32} /> : <XCircle size={32} />}
+                          </div>
+                          <p className="text-lg font-bold mb-6">{scanFeedback?.msg || "Erreur"}</p>
+                          <button onClick={() => { setShowQaModal(false); setCurrentActivity(null); setScanFeedback(null); }} className="w-full py-3 bg-white hover:bg-slate-200 text-black font-bold rounded-xl transition-colors">Fermer</button>
                       </div>
                 )}
 
-                {/* Case 2: Validation Question (Input) */}
+                {/* Input Form */}
                 {currentActivity && (!scanFeedback || scanFeedback.type === 'error') && scanFeedback?.type !== 'warning' && (
                     <>
                         <div className="text-center mb-6">
@@ -373,7 +378,6 @@ export default function Dashboard() {
                             onKeyDown={(e) => e.key === 'Enter' && submitAnswer()}
                         />
                         
-                        {/* Inline Error Message */}
                         <div className="h-6 mb-2">
                              {scanFeedback?.type === 'error' && <p className="text-red-400 text-xs font-bold text-center animate-pulse">{scanFeedback.msg}</p>}
                         </div>
@@ -391,12 +395,12 @@ export default function Dashboard() {
                     </>
                 )}
 
-                {/* Case 3: Success Message */}
+                {/* Success */}
                 {scanFeedback?.type === 'success' && (
                       <div className="text-center py-6 animate-in zoom-in-50">
-                         <div className="mx-auto w-20 h-20 rounded-full bg-green-500 flex items-center justify-center mb-4 text-black shadow-lg shadow-green-500/40"><CheckCircle2 size={40} /></div>
-                         <h2 className="text-2xl font-bold mb-2">Validé !</h2>
-                         <p className="text-slate-400">Activité enregistrée avec succès.</p>
+                          <div className="mx-auto w-20 h-20 rounded-full bg-green-500 flex items-center justify-center mb-4 text-black shadow-lg shadow-green-500/40"><CheckCircle2 size={40} /></div>
+                          <h2 className="text-2xl font-bold mb-2">Validé !</h2>
+                          <p className="text-slate-400">Activité enregistrée avec succès.</p>
                       </div>
                 )}
             </div>

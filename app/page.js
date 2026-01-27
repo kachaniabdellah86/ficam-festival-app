@@ -1,17 +1,19 @@
 'use client';
 import Link from 'next/link';
-import { Sparkles, QrCode, Play, ArrowRight, Ticket, Film, Star, ChevronRight } from 'lucide-react';
+import { Sparkles, QrCode, Play, Ticket, Film, Star } from 'lucide-react';
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-black text-white font-sans selection:bg-purple-500 selection:text-white overflow-x-hidden">
+    // FIX: Added w-full and max-w-[100vw] to strictly constrain width
+    <div className="min-h-screen w-full max-w-[100vw] bg-black text-white font-sans selection:bg-purple-500 selection:text-white overflow-x-hidden relative">
       
       {/* 🎬 CINEMATIC BACKGROUND */}
-      <div className="fixed inset-0 z-0">
+      {/* FIX: Added 'overflow-hidden' here. This cuts off the blobs so they don't stretch the page */}
+      <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
         {/* Projector Light */}
         <div className="absolute top-[-20%] left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-purple-600/30 rounded-full blur-[120px] animate-pulse"></div>
         <div className="absolute bottom-[-20%] right-[-10%] w-[400px] h-[400px] bg-blue-600/20 rounded-full blur-[100px]"></div>
-        {/* Film Grain Overlay (Optional CSS trick) */}
+        {/* Film Grain Overlay */}
         <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 brightness-100 contrast-150 mix-blend-overlay"></div>
       </div>
 
@@ -29,7 +31,7 @@ export default function Home() {
       </nav>
 
       {/* 🦸 HERO SECTION */}
-      <main className="relative z-10 pt-32 pb-20 px-6 flex flex-col items-center text-center max-w-lg mx-auto">
+      <main className="relative z-10 pt-32 pb-20 px-6 flex flex-col items-center text-center max-w-lg mx-auto w-full">
         
         {/* Floating Badge Animation */}
         <div className="relative mb-8 animate-in zoom-in duration-700">
@@ -69,29 +71,29 @@ export default function Home() {
       </main>
 
       {/* ✨ FEATURES (Cards) */}
-      <section className="relative z-10 px-6 pb-24 max-w-lg mx-auto space-y-4">
+      <section className="relative z-10 px-6 pb-24 max-w-lg mx-auto space-y-4 w-full">
          <h3 className="text-slate-500 font-bold text-xs uppercase tracking-widest mb-4 pl-2">Comment ça marche ?</h3>
          
          <FeatureCard 
-            icon={QrCode} 
-            title="Chasse aux QR Codes" 
-            desc="Trouvez les codes cachés sur les stands." 
-            color="text-blue-400" 
-            bg="bg-blue-500/10"
+           icon={QrCode} 
+           title="Chasse aux QR Codes" 
+           desc="Trouvez les codes cachés sur les stands." 
+           color="text-blue-400" 
+           bg="bg-blue-500/10"
          />
          <FeatureCard 
-            icon={Ticket} 
-            title="Validez vos Séances" 
-            desc="Obtenez des badges pour chaque film vu." 
-            color="text-pink-400" 
-            bg="bg-pink-500/10"
+           icon={Ticket} 
+           title="Validez vos Séances" 
+           desc="Obtenez des badges pour chaque film vu." 
+           color="text-pink-400" 
+           bg="bg-pink-500/10"
          />
          <FeatureCard 
-            icon={Sparkles} 
-            title="Devenez une Légende" 
-            desc="Grimpez les niveaux et gagnez des prix." 
-            color="text-yellow-400" 
-            bg="bg-yellow-500/10"
+           icon={Sparkles} 
+           title="Devenez une Légende" 
+           desc="Grimpez les niveaux et gagnez des prix." 
+           color="text-yellow-400" 
+           bg="bg-yellow-500/10"
          />
       </section>
 

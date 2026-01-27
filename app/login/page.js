@@ -42,7 +42,6 @@ export default function Login() {
 
         if (dbError) {
              console.error("DB Error:", dbError);
-             // If profile missing, assume student but log error
         }
 
         const role = profile?.role || 'student';
@@ -71,11 +70,14 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0F0F1A] flex items-center justify-center p-4 relative overflow-hidden">
+    // FIX: Added w-full max-w-[100vw] to constrain width
+    <div className="min-h-screen w-full max-w-[100vw] bg-[#0F0F1A] flex items-center justify-center p-4 relative overflow-hidden">
       
-      {/* Background Decor */}
-      <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-purple-600/30 rounded-full blur-[100px] animate-pulse"></div>
-      <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-pink-600/30 rounded-full blur-[100px] animate-pulse delay-700"></div>
+      {/* FIX: Background Decor Wrapper - Fixed and Hidden to prevent scroll */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-purple-600/30 rounded-full blur-[100px] animate-pulse"></div>
+          <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-pink-600/30 rounded-full blur-[100px] animate-pulse delay-700"></div>
+      </div>
 
       <Link href="/" className="absolute top-8 left-8 text-white/50 hover:text-white flex items-center gap-2 transition-colors z-20">
         <ArrowLeft size={20} /> Retour

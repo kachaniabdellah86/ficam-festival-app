@@ -74,12 +74,14 @@ export default function Register() {
   };
 
   return (
-    // 📱 Mobile Fix: px-4 for side padding, py-12 to ensure it doesn't stick to top/bottom
-    <div className="min-h-screen bg-[#0F0F1A] flex items-center justify-center px-4 py-12 relative overflow-hidden font-sans">
+    // FIX: Added w-full and max-w-[100vw] to strictly constrain width
+    <div className="min-h-screen w-full max-w-[100vw] bg-[#0F0F1A] flex items-center justify-center px-4 py-12 relative overflow-hidden font-sans">
       
-      {/* 🟣 Blobs adjusted for mobile opacity */}
-      <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] bg-blue-600/20 rounded-full blur-[80px] animate-pulse"></div>
-      <div className="absolute bottom-[-10%] left-[-10%] w-[50%] h-[50%] bg-pink-600/20 rounded-full blur-[80px] animate-pulse delay-1000"></div>
+      {/* FIX: Background Decor Wrapper - Fixed and Hidden */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] bg-blue-600/20 rounded-full blur-[80px] animate-pulse"></div>
+          <div className="absolute bottom-[-10%] left-[-10%] w-[50%] h-[50%] bg-pink-600/20 rounded-full blur-[80px] animate-pulse delay-1000"></div>
+      </div>
 
       <Link href="/" className="absolute top-6 left-6 text-white/50 hover:text-white flex items-center gap-2 transition-colors z-20">
         <ArrowLeft size={20} /> <span className="hidden sm:inline">Retour</span>
